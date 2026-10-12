@@ -1,14 +1,21 @@
 # AGENT.md — FL Studio MCP: факты сессии (спайк E-0)
 
 Окружение: macOS, FL Studio 2026 v26.1.7 + fl-studio-mcp.
-Транспорт: `FLSTUDIO_MCP_TRANSPORT=tcp`; Python интерпретатор проекта
-`/Users/jeno/tmp/flstudio-mcp/.venv/bin/python`.
+Репозиторий: `/Users/jeno/git/flstudio-mcp` (ветка `epic/E-0`).
+Транспорт: `FLSTUDIO_MCP_TRANSPORT=tcp`.
+Интерпретатор: **venv живёт в другом чекауте** —
+`/Users/jeno/tmp/flstudio-mcp/.venv/bin/python` (здесь `.venv` нет). Это только
+интерпретатор; **файлы всегда брать из этого репо** — запускать с cwd =
+`/Users/jeno/git/flstudio-mcp`, иначе выполнится код старого чекаута.
 Формат RPC: TCP `127.0.0.1:9787`, newline-JSON `{"op":"call","cmd":…,"params":{…}}`,
-ответ `{"ok":true,"data":{…}}`. Хелпер: `scripts/rpc_call.py <cmd> '<json-params>'`.
+ответ `{"ok":true,"data":{…}}`. Хелпер: `scripts/rpc_call.py <cmd> '<json-params>'`
+(для `apply_notes` — см. ниже, формат там другой).
 
-Полные воспроизводимые факты FL 26.1.7 — в `docs/API_PROBE_26.md` (Q1–Q6).
-Канонический манифест репозитория (план эпиков E-0…E-8) — `ROADMAP.md`.
-Этот файл — оперативные заметки сессии; не дублирует ROADMAP и не противоречит ему.
+Полные воспроизводимые факты FL 26.1.7 — `docs/API_PROBE_26.md` (Q1–Q6).
+Эпический план E-0…E-8 + контракты — `prompts/flstudio-mcp-upgrade/`
+(`00_OVERVIEW_AND_CONTRACTS.md`, `01_IMPLEMENTATION_PROMPTS.md`).
+`ROADMAP.md` — **другой** план (Phase 0–7, эпиков E-* там нет) — не путать.
+Этот файл — оперативные заметки сессии; не дублирует вышеуказанные.
 
 ---
 
@@ -93,30 +100,45 @@
 
 ## Запись нот (pyscript-мост)
 1. `channel_select` — выбрать канал Channel Rack.
-2. RPC `{"op":"call","cmd":"apply_notes","params":{"notes":[…],"mode":"replace","trigger":true}}`
+2. RPC — **верхнеуровневый `op`**, формат:
+   `{"op":"apply_notes","notes":[…],"mode":"replace","trigger":true}`
    Формат ноты: `{pitch (MIDI, 60=C5 в FL), time_bars, length_bars, velocity}`.
+   Обработчик — `daemon.py:113` (`if op == "apply_notes":`). Это **НЕ** формат
+   `{"op":"call","cmd":"apply_notes","params":{…}}` — тот вернёт
+   `{"ok":false,"error":"Unknown command: apply_notes"}` (записи нот там нет).
+   `scripts/rpc_call.py` оборачивает вызов в `{"op":"call",…}` и потому эту op
+   **не умеет** — notes писать только напрямую:
+   `printf '%s\n' '{"op":"apply_notes","notes":[…]}' | nc 127.0.0.1 9787`
 3. Мост пишет скрипт в
    `~/Documents/Image-Line/FL Studio/Settings/Piano roll scripts/MCP_Apply.pyscript`
    и дёргает хоткей Cmd+Opt+Y.
 4. **Раз в сеанс FL** пользователь запускает «MCP Apply» вручную из меню
    Piano roll → Tools → Scripts (нет API для arm).
 Очистка нот: пустой `mode="replace"` реально чистит score (подтверждено
-`grid_bits` все 0). `apply_notes` — **не** RPC-команда из списка `api_probe`;
-вызывать напрямую `from fl_studio_mcp.pianoroll import apply_notes`.
+`grid_bits` все 0).
 
 ### Недеструктивная очистка (MCP_Read_Probe v3)
 `MCP_Read_Probe.pyscript` **не** делает `score.clearNotes(True)` (это стирает
-весь score, включая ноты пользователя). Он удаляет **только свои питчи**
-(84–100) через snapshot-keep-rewrite и затем пишет маркеры заново. Запуск
-безопасен на реальном паттерне; ноты-маркеры убираются undo (Cmd+Z).
+весь score). Он удаляет **только свои питчи** (84–100): snapshot → переписывание
+списка нот только с этими питчами → `addNote` обратно. **Уточнение:** свойства
+переписанных (чужих) нот, кроме `number/time/length/velocity`, сбрасываются
+(pan/fine/release/color не сохраняются) — переписывание идёт через пересоздание
+`Note`. Питчей, которых нет в `MARKER_PITCHES`, переписывание не касается.
+Нитерация `for n in score:` **непрямо** подтверждена (deployed v3 отработал без
+краша-91), но доказанный паттерн репо — `score.noteCount()` / `score.getNote(i)`
+(`pyscript_gen._QUANTIZE_TEMPLATE`); при сбое итерации скрипт уйдёт в ветку 91
+и сломает канал обратной связи Q2. Маркеры-маркеры убираются undo (Cmd+Z).
 
 ---
 
 ## Очистка / гигиена сеанса
-- `scripts/test_bridge.py` (DoD-команда): проверяет `ping` (build `e0-probe-v18`),
-  `list_mcp_resources`, `play`/`get_play_state`, `arrange_new_pattern`,
-  `get_channel_state`, `get_mixer_state`, `detect_cleanup_candidates`,
-  `diagnose_mix`. Зелёный вывод процитирован в `docs/API_PROBE_26.md` (DoD).
+- `scripts/test_bridge.py` (DoD-команда) — фактический состав шагов (по скрипту,
+  не по догадке): `ping` (билд `e0-probe-v18`), `get_tempo`, `set_tempo +5`,
+  восстановление темпа, `play`, `get_play_state (mid-play)`, `stop`; extended:
+  `toggle_play` ×2, `get_song_position`, `set_song_position beats=4.0`,
+  повторное чтение позиции, `record` ×2 (arm/disarm), cleanup (stop + poll до
+  `recording: false` + reset позиции). Вывод процесса — процитирован в
+  `docs/API_PROBE_26.md` (DoD-блок).
   - **Учтён баг cleanup**: `record` — тогл, его ответ сообщает **предыдущее**
     состояние, и `get_play_state` может отставать на тик. Раньше cleanup
     оставлял `recording: true`. Исправлено: poll с паузой 0.3 с до

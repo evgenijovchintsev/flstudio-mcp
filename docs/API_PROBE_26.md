@@ -77,6 +77,13 @@ op `step`). FL **не** перечитывает контроллер сам —
 
 **Факт (запуск из меню Piano roll → Tools → Scripts → MCP Read Probe):**
 - В score появились **ровно 2 ноты: C7 (84) и E7 (88)**.
+- **Честная отметка прогона:** последний след нот (84+88) оставлен прогоном
+  **v2** — отдельного прогона v3 с 13-тонной таблицей не выполнялось (v3
+  деплойнут и сверен с репо: md5 `9b0c0fa0…` совпадает в обоих местах;
+  mtime деплоя 16:30+). След v2 и v3 не различить: при неработающих импортах
+  92–100 и работающем flpianoroll обе версии пишут ровно 84+88. Различимый
+  прогон (маркеры 92–100) появится только когда импорты перестанут падать —
+  сейчас их отсутствие **и** есть результат Q2.
 - Расшифровка: скрипт **дошёл до конца** (84) и **`flpianoroll` импортируется** (88).
 - `85/86` отсутствуют → **чтение и запись файла заблокированы**
   (receipt-файлов нет ни в одном из 3 путей; входной `probe.json` при этом
@@ -175,10 +182,18 @@ import subprocess; print(subprocess.run(
     ["sips", "-g", "pixelWidth", "-g", "pixelHeight", "/tmp/m.png"],
     capture_output=True, text=True).stdout)         # -> pixelWidth 3420, pixelHeight 2214
 
-# тайминги (3 прогона, среднее)
+# тайминги (3 прогона, среднее) -- честный цикл: t0 -> замер -> t1
 import time, subprocess
-t = [time.time() or subprocess.run(["screencapture", "-x", "/tmp/t.png"], check=True)
-     or time.time() for _ in range(3)]              # ~0.18 с на прогон
+ts = []
+for _ in range(3):
+    t0 = time.time()
+    subprocess.run(["screencapture", "-x", "/tmp/t.png"], check=True)
+    ts.append(time.time() - t0)
+print("screencapture avg:", sum(ts) / len(ts))     # ~0.18 с на прогон
+
+# для сравнения pyautogui (нужен Pillow)
+import pyautogui
+t0 = time.time(); pyautogui.screenshot(); print("pyautogui:", time.time() - t0)  # ~0.27
 ```
 
 **Факт (замерено на этом экране):**

@@ -8,9 +8,11 @@
 # visible in View > Script output, so the verdict is ALSO encoded as piano-roll
 # notes (one note per check) -- readable from a screenshot, clearable by undo.
 #
-# NON-DESTRUCTIVE: this script never clears the score. It only removes notes it
-# owns (the MARKER_PITCHES below) and then writes its own markers, so running it
-# cannot destroy the user's notes. An undo (Cmd+Z) removes the markers it left.
+# NON-DESTRUCTIVE: this script never clears the score wholesale. It removes
+# only the MARKER_PITCHES below (number/time/length/velocity of other notes are
+# kept; their pan/fine/release/color are not -- rewritten notes are fresh Note
+# objects), then writes its own markers. Notes whose pitch is not in
+# MARKER_PITCHES are never touched. An undo (Cmd+Z) removes the markers it left.
 #
 #   notes at bar 0 (length 0.1 bar, vel 0.9):
 #     C6 (84) = script reached the end at all
@@ -86,12 +88,15 @@ def _clear_own_markers(score):
     """Remove only the notes this script owns (MARKER_PITCHES).
 
     The score API exposes no targeted delete, so we snapshot the score, drop
-    the owned pitches, and rewrite it. Anything not in MARKER_PITCHES survives
-    untouched -- unlike the old clearNotes(True), which wiped the whole score.
+    the owned pitches, and rewrite it. Notes outside MARKER_PITCHES keep their
+    number/time/length/velocity; other per-note properties (pan/fine/release/
+    color) are NOT preserved because rewritten notes are re-created as fresh
+    Note objects -- only the marker pitches are affected at all.
     """
     keep = []
-    for n in score:
-        if int(getattr(n, "number", -1)) not in MARKER_PITCHES:
+    for i in range(score.noteCount):        # proven pattern: pyscript_gen.py
+        n = score.getNote(i)
+        if int(n.number) not in MARKER_PITCHES:
             keep.append((int(n.number), int(n.time), int(n.length),
                          float(n.velocity)))
     try:
