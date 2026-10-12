@@ -251,9 +251,9 @@ def safe_write_group(bridge, *, tool, scope, writes, delay=0.0,
     LIST -- so :func:`rollback_last_change` reverts the whole group atomically.
     Honors dry-run. Returns {"ok", "before":[...], "after":[...]}.
 
-    ``delay`` sleeps before every write (FL drops writes that arrive
-    back-to-back; 0.4 s is the tested pace for plugin params, and the first
-    beat also lets FL settle before the burst starts). ``verify_values``
+    ``delay`` sleeps BETWEEN consecutive writes (FL drops writes that arrive
+    back-to-back; 0.4 s is the tested pace for plugin params -- a batch of N
+    therefore costs (N-1)*delay plus the RPC time). ``verify_values``
     is a per-write list mirroring :func:`safe_write`'s ``verify_value`` (or
     None to skip): each miss is re-written/re-read ``verify_attempts`` times
     before moving on, and the response gains parallel ``verified`` /
@@ -273,8 +273,8 @@ def safe_write_group(bridge, *, tool, scope, writes, delay=0.0,
         restores.append(w["restore"](before))
     afters, verified_out, attempts_out = [], [], []
     for i, w in enumerate(writes):
-        if delay:
-            time.sleep(delay)              # pace the writes, not the snapshots
+        if i and delay:
+            time.sleep(delay)          # between writes -- FL drops back-to-back
         echo = bridge.call(w["command"], w["params"])
         after, verified, attempts = echo, None, None
         vv = verify_values[i] if (verify_values and i < len(verify_values)) else None
