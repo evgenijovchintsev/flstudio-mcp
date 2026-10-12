@@ -2,61 +2,182 @@
 # Script.Author = "rosasynthesiz"
 # Script.Category = "MCP"
 #
-# Phase 2 -- Slice 2. The decisive test: pyscript file WRITE is blocked, but
-# can a pyscript READ a file? If yes, the bridge is: daemon writes a job JSON
-# (normal process, writes fine) -> pyscript reads it -> addNote. If read is
-# also blocked, the job-file bridge is dead and we need a different transport.
+# E-0 spike v3 -- file I/O verdict for the piano-roll pyscript sandbox on FL 26.
 #
-# Reports its result by WRITING NOTES (the only output channel we have):
-#   READ OK   -> ONE note at the pitch read from ~/.flstudio-mcp/probe.json
-#   READ FAIL -> a chromatic marker C/C#/D (60/61/62) so it's visually obvious
+# File I/O in this sandbox is expected to be blocked, and `print()` output is not
+# visible in View > Script output, so the verdict is ALSO encoded as piano-roll
+# notes (one note per check) -- readable from a screenshot, clearable by undo.
+#
+# NON-DESTRUCTIVE: this script never clears the score wholesale. It removes
+# only the MARKER_PITCHES below (number/time/length/velocity of other notes are
+# kept; their pan/fine/release/color are not -- rewritten notes are fresh Note
+# objects), then writes its own markers. Notes whose pitch is not in
+# MARKER_PITCHES are never touched. An undo (Cmd+Z) removes the markers it left.
+#
+#   notes at bar 0 (length 0.1 bar, vel 0.9):
+#     C6 (84) = script reached the end at all
+#     C#6(85) = read  ~/.flstudio-mcp/probe.json   OK
+#     D6 (86) = at least one write path succeeded
+#     D#6(87) = ui module importable          (status bar possible)
+#     E6 (88) = flpianoroll importable        (notes possible)
+#     F6 (89) = channels importable
+#     F#6(90) = general importable            (undo possible)
+#     G6 (91) = crash in _run()               (instead of C6)
+#
+#   import probes (one note each, only present when that module imported OK):
+#     G#6(92) = mixer       A6(93) = plugins     A#6(94) = transport
+#     B6 (95) = patterns    C7 (96) = midi       C#7(97) = arrangement
+#     D7 (98) = utils       D#7(99) = sys        E7 (100) = time
+#
+# Run from Piano roll > Tools > Scripts > MCP Read Probe (Cmd+Opt+Y re-runs last).
 
 import json
 import os
 
-import flpianoroll as flp
+READ_PATH = os.path.expanduser("~/.flstudio-mcp/probe.json")
+TARGETS = [
+    os.path.expanduser("~/.flstudio-mcp/apply_receipt.json"),
+    "/tmp/flmcp_apply_receipt.json",
+    os.path.expanduser("~/Desktop/e0_apply_receipt.json"),
+]
+
+# Every pitch this script may ever write. Deleting only these leaves any other
+# note in the score untouched -- the script is safe to run on a real pattern.
+MARKER_PITCHES = (84, 85, 86, 87, 88, 89, 90, 91,
+                  92, 93, 94, 95, 96, 97, 98, 99, 100)
+
+# Module -> marker pitch for the import probe (all of them are now observable).
+IMPORT_PITCHES = (
+    ("ui", 87), ("flpianoroll", 88), ("channels", 89), ("general", 90),
+    ("mixer", 92), ("plugins", 93), ("transport", 94), ("patterns", 95),
+    ("midi", 96), ("arrangement", 97), ("utils", 98), ("sys", 99),
+    ("time", 100),
+)
 
 
-def _clear(score):
+def _try_write(path, obj):
     try:
-        score.clearNotes(True)          # FL 25.2.5: positional, no keyword
+        with open(path, "w") as f:
+            json.dump(obj, f, indent=1, sort_keys=True)
+        return "ok"
+    except Exception as e:
+        return "%s: %s" % (type(e).__name__, e)
+
+
+def _try_read(path):
+    try:
+        with open(path, "r") as f:
+            return True, json.load(f), None
+    except Exception as e:
+        return False, None, "%s: %s" % (type(e).__name__, e)
+
+
+def _imports():
+    out = {}
+    for name in ("flpianoroll", "ui", "channels", "mixer", "plugins", "transport",
+                 "general", "patterns", "midi", "arrangement", "utils", "sys", "time"):
+        try:
+            __import__(name)
+            out[name] = "ok"
+        except Exception as e:
+            out[name] = "%s: %s" % (type(e).__name__, e)
+    return out
+
+
+def _clear_own_markers(score):
+    """Remove only the notes this script owns (MARKER_PITCHES).
+
+    The score API exposes no targeted delete, so we snapshot the score, drop
+    the owned pitches, and rewrite it. Notes outside MARKER_PITCHES keep their
+    number/time/length/velocity; other per-note properties (pan/fine/release/
+    color) are NOT preserved because rewritten notes are re-created as fresh
+    Note objects -- only the marker pitches are affected at all.
+    """
+    keep = []
+    for i in range(score.noteCount):        # proven pattern: pyscript_gen.py
+        n = score.getNote(i)
+        if int(n.number) not in MARKER_PITCHES:
+            keep.append((int(n.number), int(n.time), int(n.length),
+                         float(n.velocity)))
+    try:
+        score.clearNotes(True)     # FL 25.2.5: positional, no keyword
     except TypeError:
         score.clearNotes()
+    import flpianoroll as flp
+    for pitch, t, length, vel in keep:
+        n = flp.Note()
+        n.number, n.time, n.length, n.velocity = pitch, t, length, vel
+        score.addNote(n)
 
 
-def _add(score, pitch, time, length, vel=100 / 127.0):
-    n = flp.Note()
-    n.number = pitch
-    n.time = time
-    n.length = length
-    n.velocity = vel
-    score.addNote(n)
+def _marker_notes(pitches):
+    """Replace only OUR markers with `pitches`; leave every other note alone."""
+    import flpianoroll as flp
+    score = flp.score
+    _clear_own_markers(score)
+    step = score.PPQ // 4          # 1/16 note
+    for i, pitch in enumerate(pitches):
+        n = flp.Note()
+        n.number = int(pitch)
+        n.time = int(i * step * 2)
+        n.length = max(1, step)
+        n.velocity = 0.9
+        score.addNote(n)
 
 
 def _run():
-    score = flp.score
-    bar = score.PPQ * 4
-    path = os.path.expanduser("~/.flstudio-mcp/probe.json")
+    receipt = {"probe": "MCP_Read_Probe v3 (E-0)", "stage": "start"}
+    receipt["first_write"] = {p: _try_write(p, receipt) for p in TARGETS}
 
-    pitch = None
-    read_ok = False
-    try:
-        with open(path, "r") as f:
-            data = json.load(f)
-        pitch = int(data["pitch"])
-        read_ok = True
-    except Exception:
-        read_ok = False
+    read_ok, data, read_err = _try_read(READ_PATH)
+    receipt.update({"read_ok": read_ok, "read_data": data, "read_error": read_err})
 
-    _clear(score)
+    receipt["imports"] = imports = _imports()
+    if imports.get("sys") == "ok":
+        import sys
+        receipt["python"] = sys.version
+
+    receipt["stage"] = "done"
+    receipt["write"] = {p: _try_write(p, receipt) for p in TARGETS}
+    ok_paths = [p for p, r in receipt["write"].items() if r == "ok"]
+    receipt["write_ok_paths"] = ok_paths
+
+    bits = [84]                                    # reached end
     if read_ok:
-        # READ WORKED -> single 1-bar note at the pitch we read from disk
-        _add(score, pitch, 0, bar)
-    else:
-        # READ FAILED -> chromatic marker (C5/C#5/D5), staggered quarter notes
-        q = bar // 4
-        for k, p in enumerate((60, 61, 62)):
-            _add(score, p, k * q, q)
+        bits.append(85)
+    if ok_paths:
+        bits.append(86)
+    for pitch, mod in ((87, "ui"), (88, "flpianoroll"),
+                       (89, "channels"), (90, "general")):
+        if imports.get(mod) == "ok":
+            bits.append(pitch)
+    _marker_notes(bits)                            # visible evidence
+
+    verdict = "E-0 probe v3: read=%s writes=%d/%d bits=%s" % (
+        "OK" if read_ok else ("FAIL %s" % read_err),
+        len(ok_paths), len(TARGETS),
+        ",".join(str(p) for p in bits),
+    )
+    print(verdict)
+    try:
+        ui = __import__("ui")
+        ui.setHintMsg(verdict[:120])
+        if hasattr(ui, "showNotification"):
+            ui.showNotification(verdict[:120])
+    except Exception as e:
+        print("status-bar unavailable: %s: %s" % (type(e).__name__, e))
+    return receipt
 
 
-_run()
+try:
+    _run()
+except Exception as e:
+    msg = "E-0 probe v3 CRASH: %s: %s" % (type(e).__name__, e)
+    for p in TARGETS:
+        _try_write(p, {"probe": "MCP_Read_Probe v3 (E-0)", "stage": "CRASH",
+                       "error": msg})
+    try:
+        _marker_notes([91])
+    except Exception:
+        pass
+    print(msg)

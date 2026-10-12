@@ -290,7 +290,7 @@ def _h_ping(params):
     return {
         "fl_version": _fl_version,
         "protocol_version": PROTOCOL_VERSION,
-        "build": "color-v14",   # reload marker -- bump to verify reloads take
+        "build": "e0-probe-v18",   # reload marker -- bump to verify reloads take
         "ts": time.time(),
     }
 
@@ -882,8 +882,24 @@ def _h_plugin_preset(p):
 def _h_api_probe(p):
     """op:
       dir    -> {module, names}: public names of one FL module (per-module to
-                stay under the SysEx size limit).
+                stay under the SysEx size limit). Paginated via start/next_start.
       ppq    -> {ppq, pattern_count, pattern_number}
+      step   -> READ-ONLY Channel Rack step-grid + focus/status introspection:
+                grid bits of one channel (channels.getGridBit /
+                isGridBitAssigned), ui.getStepEditMode, focus + hint (for the
+                macOS hotkey diagnosis) and piano-roll visibility. No writes.
+                Budget-limited: at most 16 grid steps per call, windowed by
+                start/next_start (grid bits are the only variable-length part;
+                the focus/hint block is fixed and returned on every page).
+      pat    -> READ-ONLY pattern metadata: getPatternName/getPatternLength/
+                getPatternColor/isPatternSelected for one index, plus
+                patternCount/patternNumber/patternMax/findFirstNextEmptyPat.
+                No jump, no rename, no create.
+      jump   -> READ-ONLY patterns.jumpToPattern bounds probe: jumps to
+                `index`, reports patternNumber, then jumps back to `back`
+                (defaults to the pattern selected at entry) so the project
+                selection is restored. Creates no patterns (verified 0/999/
+                1000 all leave patternCount unchanged).
       marker_add -> arrangement.addAutoTimeMarker(time, name)
       undo   -> general.undoUp() (best-effort, to remove a test marker)
     """
@@ -897,16 +913,124 @@ def _h_api_probe(p):
             return {"module": p.get("module"), "error": "module not available"}
         names = [n for n in dir(mod) if not n.startswith("_")]
         start = max(0, int(p.get("start", 0)))      # budget-paginate (dir is large)
+        module_key = p.get("module", "playlist")
         out, i = [], start
         while i < len(names):
             out.append(names[i])
             i += 1
-            if len(json.dumps(out, separators=(",", ":"))) > 600 and len(out) > 1:
+            # Budget: measure the FULL returned envelope
+            # {module,total,start,next_start,names} like _paginate() -- names-only
+            # under-measured by the envelope bytes and first pages shipped
+            # 652-658 B (contract: data <= 600 B).
+            size = len(json.dumps(
+                {"module": module_key, "total": len(names), "start": start,
+                 "next_start": (i if i < len(names) else None), "names": out},
+                separators=(",", ":")))
+            if size > _LIST_BUDGET and len(out) > 1:
                 out.pop()
                 i -= 1
                 break
-        return {"module": p.get("module", "playlist"), "total": len(names),
+        return {"module": module_key, "total": len(names),
                 "start": start, "next_start": (i if i < len(names) else None), "names": out}
+    if op == "step":
+        # READ-ONLY (E-0 spike): no setters, no UI commands, nothing to undo.
+        # Budget (00 §2.2): grid bits are the only variable-length part, so the
+        # window is capped at 16 per call and paginated via start/next_start --
+        # the same contract as op dir. Focus/hint are fixed-size and returned
+        # on every page. Without this cap steps=64 overflowed the SysEx budget
+        # (~670-888 B), which the transport drops silently.
+        ch = int(p.get("channel", 0))
+        steps = max(1, min(64, int(p.get("steps", 16))))     # hard read cap
+        start = max(0, min(steps - 1, int(p.get("start", 0))))
+        end = min(steps, start + 16)                          # 16 per page
+        bits, assigned = [], []
+        bit_err = None
+        for i in range(start, end):
+            try:
+                bits.append(1 if channels.getGridBit(ch, i) else 0)
+            except Exception as e:
+                bit_err = f"{type(e).__name__}: {e}"
+                break
+            try:
+                assigned.append(bool(channels.isGridBitAssigned(ch, i)))
+            except Exception:
+                assigned.append(None)
+        out = {"channel": ch, "steps": steps, "start": start, "next_start": (
+            (start + len(bits)) if (bit_err is None and start + len(bits) < steps)
+            else None), "grid_bits": bits, "grid_assigned": assigned}
+        if bit_err:
+            out["grid_error"] = bit_err
+        probes = (
+            ("step_edit_mode", lambda: ui.getStepEditMode()),
+            ("piano_roll_focused", lambda: ui.getFocused(getattr(midi, "widPianoRoll", -1))),
+            ("focused_form_id", lambda: ui.getFocusedFormID()),
+            ("focused_caption", lambda: (ui.getFocusedFormCaption() or "")[:40]),
+            ("hint", lambda: (ui.getHintMsg() or "")[:60]),
+            ("piano_roll_visible", lambda: ui.getVisible(getattr(midi, "widPianoRoll", -1))),
+            ("step_mode_has_setter", lambda: hasattr(ui, "setStepEditMode")),
+            ("run_script_api", lambda: hasattr(ui, "runScript")),
+        )
+        for key, fn in probes:
+            try:
+                out[key] = fn()
+            except Exception as e:
+                out[key] = f"err: {type(e).__name__}: {e}"
+        return out
+    if op == "pat":
+        # READ-ONLY (E-0 spike): pattern metadata. No jump/rename/create.
+        idx = int(p.get("index", 1))
+        out = {"index": idx}
+        if idx < 1:
+            # patterns.* indexes are 1-based; FL 26 crashes on jumpToPattern
+            # (<0), so never hand a non-positive index to any patterns.* call.
+            out["index_error"] = f"rejected index {idx}: pattern indexes are >= 1"
+            return out
+        probes = (
+            ("name", lambda: patterns.getPatternName(idx)),
+            ("length", lambda: patterns.getPatternLength(idx)),
+            ("color", lambda: patterns.getPatternColor(idx)),
+            ("selected", lambda: patterns.isPatternSelected(idx)),
+            ("count", lambda: patterns.patternCount()),
+            ("number", lambda: patterns.patternNumber()),
+            ("max", lambda: patterns.patternMax()),
+            ("next_empty", lambda: patterns.findFirstNextEmptyPat()),
+            ("has_set_name", lambda: hasattr(patterns, "setPatternName")),
+            ("has_set_length", lambda: hasattr(patterns, "setPatternLength")),
+        )
+        for key, fn in probes:
+            try:
+                out[key] = fn()
+            except Exception as e:
+                out[key] = f"err: {type(e).__name__}: {e}"
+        return out
+    if op == "jump":
+        # READ-ONLY probe of patterns.jumpToPattern bounds. Jumps, reports the
+        # resulting patternNumber, then jumps back to `back` (default: where we
+        # started) so the project state is restored. This is the Q4 question:
+        # what does FL do when you jump past patternMax / to 0?
+        idx = int(p.get("index", 1))
+        back = int(p.get("back", patterns.patternNumber()))
+        out = {"tried": idx, "start": back}
+        # GUARD: FL 26.1.7 CRASHES (EAccessViolation, main thread; bridge gets
+        # FLTimeout) on patterns.jumpToPattern(<0) -- observed in E-0 round 4.
+        # Never pass a negative index to FL; reject it here instead.
+        if idx < 1:
+            out["jump_error"] = (f"rejected index {idx}: jumpToPattern needs >= 1 "
+                                 "(FL crashes on <0)")
+            return out
+        if back < 1:
+            back = 1                  # restore target must be valid too
+        try:
+            patterns.jumpToPattern(idx)
+            out["after_jump_number"] = patterns.patternNumber()
+        except Exception as e:
+            out["jump_error"] = f"{type(e).__name__}: {e}"
+        try:
+            patterns.jumpToPattern(back)
+            out["restored_number"] = patterns.patternNumber()
+        except Exception as e:
+            out["restore_error"] = f"{type(e).__name__}: {e}"
+        return out
     if op == "ppq":
         out = {}
         for key, fn in (("ppq", lambda: general.getRecPPQ()),
