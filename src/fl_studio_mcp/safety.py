@@ -21,6 +21,7 @@ from .protocol import (
     CMD_CHANNEL_LIST,
     CMD_PLUGIN_GET_PARAM,
     CMD_MIXER_GET_ROUTING,
+    CMD_PATTERN_GET_LENGTH,
 )
 
 
@@ -96,7 +97,7 @@ def take_snapshot(bridge, scope):
     """Read current state for a scope so it can be restored or recorded.
 
     scope: "mixer_track:N" | "channel:N" | "mixer_all" | "channels_all"
-           | "plugin_param:TRACK:SLOT:PARAM"
+           | "plugin_param:TRACK:SLOT:PARAM" | "route:SRC:DST" | "pattern:N"
     """
     kind, _, arg = str(scope).partition(":")
     if kind == "mixer_track":
@@ -118,6 +119,11 @@ def take_snapshot(bridge, scope):
     if kind == "channels_all":
         from .connection import fetch_all_pages
         return fetch_all_pages(bridge, CMD_CHANNEL_LIST, "channels")
+    if kind == "pattern":
+        # Single-pattern read: name + length (ticks/bars) + selection state.
+        # Doubles as the rename/select rollback basis (restore = old name /
+        # previously selected index).
+        return bridge.call(CMD_PATTERN_GET_LENGTH, {"index": int(arg)})
     raise ValueError("unknown snapshot scope: %r" % (scope,))
 
 

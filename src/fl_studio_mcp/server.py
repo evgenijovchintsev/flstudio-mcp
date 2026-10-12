@@ -35,6 +35,7 @@ from .tools import export as export_tools
 from .tools import mix_doctor as mix_doctor_tools
 from .tools import mixing as mixing_tools
 from .tools import phase1 as phase1_tools
+from .tools import pattern as pattern_tools
 from .tools import pianoroll as pianoroll_tools
 from .tools import plugin as plugin_tools
 from .tools import presets as presets_tools
@@ -100,8 +101,7 @@ def build_server() -> FastMCP:
     export_tools.register(mcp)      # MIDI export: arrangement spec -> type-1 .mid on disk
     presets_tools.register(mcp)     # Preset suggester: read preset names from disk
     mix_doctor_tools.register(mcp)  # Mix Doctor: diagnose whole mix + gated apply-fixes
-    # Later tool packs register here as they ship:
-    #   pattern_tools.register(mcp)
+    pattern_tools.register(mcp)     # E-2: pattern list/select/rename/get_length
     return mcp
 
 
