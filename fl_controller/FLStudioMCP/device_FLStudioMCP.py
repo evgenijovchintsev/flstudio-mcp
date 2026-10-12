@@ -290,7 +290,7 @@ def _h_ping(params):
     return {
         "fl_version": _fl_version,
         "protocol_version": PROTOCOL_VERSION,
-        "build": "e0-probe-v18",   # reload marker -- bump to verify reloads take
+        "build": "probe-v15",   # reload marker -- bump to verify reloads take
         "ts": time.time(),
     }
 
@@ -886,8 +886,8 @@ def _h_api_probe(p):
       ppq    -> {ppq, pattern_count, pattern_number}
       step   -> READ-ONLY Channel Rack step-grid + focus/status introspection:
                 grid bits of one channel (channels.getGridBit /
-                isGridBitAssigned), ui.getStepEditMode, focus + hint (for the
-                macOS hotkey diagnosis) and piano-roll visibility. No writes.
+                isGridBitAssigned), ui.getStepEditMode, focus + hint and
+                piano-roll visibility. No writes.
                 Budget-limited: at most 16 grid steps per call, windowed by
                 start/next_start (grid bits are the only variable-length part;
                 the focus/hint block is fixed and returned on every page).
@@ -933,8 +933,8 @@ def _h_api_probe(p):
         return {"module": module_key, "total": len(names),
                 "start": start, "next_start": (i if i < len(names) else None), "names": out}
     if op == "step":
-        # READ-ONLY (E-0 spike): no setters, no UI commands, nothing to undo.
-        # Budget (00 §2.2): grid bits are the only variable-length part, so the
+        # READ-ONLY probe: no setters, no UI commands, nothing to undo.
+        # Budget: grid bits are the only variable-length part, so the
         # window is capped at 16 per call and paginated via start/next_start --
         # the same contract as op dir. Focus/hint are fixed-size and returned
         # on every page. Without this cap steps=64 overflowed the SysEx budget
@@ -977,7 +977,7 @@ def _h_api_probe(p):
                 out[key] = f"err: {type(e).__name__}: {e}"
         return out
     if op == "pat":
-        # READ-ONLY (E-0 spike): pattern metadata. No jump/rename/create.
+        # READ-ONLY pattern metadata. No jump/rename/create.
         idx = int(p.get("index", 1))
         out = {"index": idx}
         if idx < 1:
@@ -1006,14 +1006,15 @@ def _h_api_probe(p):
     if op == "jump":
         # READ-ONLY probe of patterns.jumpToPattern bounds. Jumps, reports the
         # resulting patternNumber, then jumps back to `back` (default: where we
-        # started) so the project state is restored. This is the Q4 question:
-        # what does FL do when you jump past patternMax / to 0?
+        # started) so the project state is restored. Answers: what does FL do
+        # when you jump past patternMax / to 0?
         idx = int(p.get("index", 1))
         back = int(p.get("back", patterns.patternNumber()))
         out = {"tried": idx, "start": back}
-        # GUARD: FL 26.1.7 CRASHES (EAccessViolation, main thread; bridge gets
-        # FLTimeout) on patterns.jumpToPattern(<0) -- observed in E-0 round 4.
-        # Never pass a negative index to FL; reject it here instead.
+        # GUARD: FL 26.1.7 crashes (EAccessViolation, main thread; the bridge
+        # sees a timeout) on patterns.jumpToPattern(<0) -- reproduced on
+        # Producer Edition v26.1.7 [build 5419]. Never hand FL a negative
+        # index; reject it here instead.
         if idx < 1:
             out["jump_error"] = (f"rejected index {idx}: jumpToPattern needs >= 1 "
                                  "(FL crashes on <0)")
@@ -1097,6 +1098,11 @@ def _h_arrange_clone_pattern(p):
     """Clone a pattern (copies its notes) and rename the clone. Reports
     count before/after + the clone's selected index so we can see what FL did."""
     src = int(p["src"])
+    # GUARD: FL 26.1.7 crashes (EAccessViolation) on jumpToPattern(<0).
+    # The MCP tool layer validates src >= 1, but raw RPC commands bypass it.
+    if src < 1:
+        return {"ok": False, "error": f"rejected src {src}: pattern index must be >= 1 "
+                "(FL crashes on jumpToPattern(<0))"}
     new_name = p.get("new_name", "CLONE")
     patterns.jumpToPattern(src)
     before = patterns.patternCount()

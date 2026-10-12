@@ -153,7 +153,7 @@ def main() -> int:
     # transport.record() is a toggle and its reply reports the PREVIOUS state,
     # and get_play_state can lag a tick behind the toggle, so poll with a short
     # delay instead of assuming one extra toggle lands on False. Leaving the
-    # DoD command with record armed would surprise the next run.
+    # run with record armed would surprise the next run.
     try:
         bridge.call(CMD_STOP)
         state = bridge.call(CMD_GET_PLAY_STATE)
