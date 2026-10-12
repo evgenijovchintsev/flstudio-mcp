@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fl_studio_mcp import safety  # noqa: E402
+from fl_studio_mcp.connection import get_bridge  # noqa: E402
 from fl_studio_mcp.server import build_server  # noqa: E402
 
 TMP_NAME = "TMP_E2_deleted_after_test"
@@ -121,11 +122,11 @@ def main() -> int:
 
         # 6/7. rollbacks (LIFO) ------------------------------------------
         n0 = len(safety.get_changelog().recent(50))
-        safety.rollback_last_change()
+        safety.rollback_last_change(get_bridge())
         sel_after = asyncio.run(call("fl_pattern_get_length", {"index": t})).get("current")
         check("rollback select restored previous", sel_after == t,
               f"current={sel_after} want={t}")
-        safety.rollback_last_change()
+        safety.rollback_last_change(get_bridge())
         name_after = asyncio.run(call("fl_pattern_get_length", {"index": t})).get("name")
         check("rollback rename restored old name", name_after == "E2TEST",
               repr(name_after))

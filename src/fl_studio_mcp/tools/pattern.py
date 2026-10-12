@@ -19,7 +19,8 @@ from ..connection import fetch_all_pages, get_bridge
 def _restore_select(before):
     """Rollback for select = jump back to the pattern that WAS selected."""
     if not before.get("ok") or "current" not in before:
-        raise ValueError("pattern select: no usable snapshot to restore from")
+        raise ValueError("pattern select: no usable snapshot to restore from"
+                         + (f": {before['error']}" if before.get("error") else ""))
     return {"command": protocol.CMD_PATTERN_SELECT,
             "params": {"index": before["current"]}}
 
@@ -28,7 +29,8 @@ def _restore_rename(index):
     """Rollback for rename = put the snapshotted old name back."""
     def build(before):
         if not before.get("ok") or "name" not in before:
-            raise ValueError("pattern rename: no usable snapshot to restore from")
+            raise ValueError("pattern rename: no usable snapshot to restore from"
+                             + (f": {before['error']}" if before.get("error") else ""))
         return {"command": protocol.CMD_PATTERN_RENAME,
                 "params": {"index": index, "name": before["name"]}}
     return build
