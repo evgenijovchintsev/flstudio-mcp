@@ -17,10 +17,14 @@ Defaults target Fruity Parametric EQ 2 at track 1 slot 0:
 A param the plugin genuinely refuses is REQUIRED for the negative case; pass
 an empty string to skip it.
 
-FL API facts this exercises (00 §3):
-  * the plugin's window must be closed (pickup mode discards writes),
-  * stepped params (types, orders, selectors) are not writable at all,
-  * values are normalised 0..1, and the reply carries verified/attempts.
+FL26 write facts this exercises (measured on Fruity Parametric EQ 2):
+  * levels/gains take an arbitrary 0..1 value,
+  * stepped params (filter types, orders, selectors) snap to their own grid,
+    so an off-grid request is verified:false with the snapped value in after,
+  * some params (band widths) ignore writes entirely -> verified:false with
+    the attempts budget exhausted,
+  * an open plugin window (pickup mode) did NOT block script writes in FL 26,
+  * values are normalised 0..1 and the reply carries verified/attempts.
 """
 from __future__ import annotations
 
