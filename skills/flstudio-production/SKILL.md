@@ -27,6 +27,19 @@ This is the orchestration layer. Deep content lives in `references/`.
 | Mixer levels | `fl_mixer_set_volume`, `_set_pan` (Phase 2) |
 | Melody in a raga | `fl_preset_write_raga_melody` (Phase 6) which calls Piano Roll under the hood |
 | Kuthu beat | `fl_preset_write_kuthu_pattern` (Phase 6) |
+| Read a plugin's knobs | `fl_plugin_list`, `fl_plugin_get_params` (names + normalised 0..1 values) |
+| Change one knob | `fl_plugin_set_param` — answers `verified` / `attempts`; a `hint` means FL refused the value |
+| Change several knobs of one plugin | `fl_plugin_set_params` — one paced burst, ONE undo step; prefer it over repeating the single tool |
+
+### Plugin parameter recipe
+
+Close the plugin's window before writing: open it and FL is in pickup mode,
+which silently swallows the write (the tool then honestly returns
+`verified: false`). Stepped parameters — filter types, orders, selectors —
+are not writable through the API at all. Values are the normalised 0..1
+domain shown by `fl_plugin_get_params`; read the display string (`3.6dB`,
+`500Hz`) to know what a value means. Check `verified` on every write; do not
+assume the requested value landed.
 
 ## When something fails
 
