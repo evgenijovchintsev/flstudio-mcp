@@ -45,10 +45,12 @@
 самому скрипту). Заблокировано: файловое чтение и запись (receipt-файлы не
 создаются ни в одном из 3 путей). Импорты `ui`, `channels`, `general`, `mixer`,
 `plugins`, `transport`, `patterns`, `midi`, `arrangement`, `utils`, `sys`,
-`time` — **все падают** (каждый закодирован отдельной нотой, все отсутствовали).
+`time` — **все 12 падают**: факт — прогон v3 (12 окт 17:41, deployed md5 =
+репо), в score только тоны 84+88, тонов 92–100 нет (см. `docs/API_PROBE_26.md`
+Q2, скриншот 17.41.01).
 `print()` в View → Script output **не виден**. Единственный канал обратной
 связи «скрипт отработал» — сами ноты в score. Идея «обойти сломанный
-`plugin_set_param` через pyscript внутри FL» — **мёртвa**.
+`plugin_set_param` через pyscript внутри FL» — **мёртва**.
 
 ### Платформа macOS
 - Хоткей **Cmd+Opt+Y («Run last script again»)** работает, когда его нажал
@@ -109,6 +111,11 @@
    `scripts/rpc_call.py` оборачивает вызов в `{"op":"call",…}` и потому эту op
    **не умеет** — notes писать только напрямую:
    `printf '%s\n' '{"op":"apply_notes","notes":[…]}' | nc 127.0.0.1 9787`
+   Контроль (живой, 12 окт): `{"op":"apply_notes","notes":[],"mode":"replace","trigger":false}`
+   → `{"ok": true, "count": 0, "script": "…/MCP_Apply.pyscript", "mode": "replace",
+   "triggered": false, "piano_roll_ensured": null}`;
+   неверный вложенный `{"op":"call","cmd":"apply_notes",…}` →
+   `{"ok": false, "error": "Unknown command: apply_notes", "code": "unknown_command"}`.
 3. Мост пишет скрипт в
    `~/Documents/Image-Line/FL Studio/Settings/Piano roll scripts/MCP_Apply.pyscript`
    и дёргает хоткей Cmd+Opt+Y.
@@ -119,15 +126,16 @@
 
 ### Недеструктивная очистка (MCP_Read_Probe v3)
 `MCP_Read_Probe.pyscript` **не** делает `score.clearNotes(True)` (это стирает
-весь score). Он удаляет **только свои питчи** (84–100): snapshot → переписывание
-списка нот только с этими питчами → `addNote` обратно. **Уточнение:** свойства
-переписанных (чужих) нот, кроме `number/time/length/velocity`, сбрасываются
-(pan/fine/release/color не сохраняются) — переписывание идёт через пересоздание
-`Note`. Питчей, которых нет в `MARKER_PITCHES`, переписывание не касается.
-Нитерация `for n in score:` **непрямо** подтверждена (deployed v3 отработал без
-краша-91), но доказанный паттерн репо — `score.noteCount()` / `score.getNote(i)`
-(`pyscript_gen._QUANTIZE_TEMPLATE`); при сбое итерации скрипт уйдёт в ветку 91
-и сломает канал обратной связи Q2. Маркеры-маркеры убираются undo (Cmd+Z).
+весь score). Он удаляет **только свои питчи** (84–100): snapshot (итерация
+`score.noteCount()` / `score.getNote(i)` — доказанный паттерн репо,
+`pyscript_gen.py:138`) → удаление из списка только нот с этими питчами →
+`clearNotes` → `addNote` обратно.
+**Уточнение (острый край):** у переписанных чужих нот (питчи 84–100, если они
+встали пользователю) сбрасываются свойства кроме `number/time/length/velocity`
+(pan/fine/release/color не сохраняются — ноты пересоздаются как `Note`).
+Питчи вне `MARKER_PITCHES` не затрагиваются. Краш-ветка 91: при любом сбое
+скрипт пишет только тон 91 вместо набора — канал обратной связи не ломается
+молча. Ноты-маркеры убираются undo (Cmd+Z).
 
 ---
 
