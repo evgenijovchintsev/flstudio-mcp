@@ -29,8 +29,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fl_studio_mcp.server import build_server  # noqa: E402
 from fl_studio_mcp import safety  # noqa: E402
+from fl_studio_mcp.server import build_server  # noqa: E402
 
 TMP_NAME = "TMP_E2_deleted_after_test"
 RENAMED = "E2TEST_renamed"
@@ -111,13 +111,16 @@ def main() -> int:
 
         # 5. get_length ---------------------------------------------------
         gl = asyncio.run(call("fl_pattern_get_length", {"index": t}))
-        print(f"length: ticks={gl.get('length_ticks')} bars={gl.get('length_bars')} "
-              f"ppq={gl.get('ppq')}")
+        print(f"length: beats={gl.get('length_beats')} bars={gl.get('length_bars')} "
+              f"ticks={gl.get('length_ticks')} ppq={gl.get('ppq')}")
         check("length sane (1..64 bars)", 0 < (gl.get("length_bars") or 0) <= 64)
+        check("length beats*ppq == ticks",
+              (gl.get("length_beats") or 0) * (gl.get("ppq") or 0) ==
+              (gl.get("length_ticks") or -1))
         check("length carries name", gl.get("name") in (RENAMED, "E2TEST"))
 
         # 6/7. rollbacks (LIFO) ------------------------------------------
-        n0 = safety.get_changelog().count
+        n0 = len(safety.get_changelog().recent(50))
         safety.rollback_last_change()
         sel_after = asyncio.run(call("fl_pattern_get_length", {"index": t})).get("current")
         check("rollback select restored previous", sel_after == t,
@@ -126,16 +129,26 @@ def main() -> int:
         name_after = asyncio.run(call("fl_pattern_get_length", {"index": t})).get("name")
         check("rollback rename restored old name", name_after == "E2TEST",
               repr(name_after))
-        print(f"changelog entries consumed: {safety.get_changelog().count - n0} -> {safety.get_changelog().count}")
+        n1 = len(safety.get_changelog().recent(50))
+        print(f"changelog entries consumed: {n0 - n1} ({n0} -> {n1})")
 
         # 8. rejections ---------------------------------------------------
-        bad0 = asyncio.run(call("fl_pattern_select", {"index": 0}))
-        bad9 = asyncio.run(call("fl_pattern_select", {"index": 9999}))
-        check("select(0) rejected", bad0.get("ok") is False and "rejected" in str(bad0.get("error", "")),
-              repr(bad0.get("error")))
-        check("select(9999) rejected", bad9.get("ok") is False and "rejected" in str(bad9.get("error", "")),
-              repr(bad9.get("error")))
-        gl0 = asyncio.run(call("fl_pattern_get_length", {"index": 0}))
+        # 8. rejections (tool-level ge=1 OR controller range guard) --------
+        def try_select(idx):
+            try:
+                return asyncio.run(call("fl_pattern_select", {"index": idx}))
+            except Exception as e:            # pydantic ge=1 raises pre-controller
+                return {"ok": False, "error": str(e)}
+
+        for idx in (0, 9999, -3):
+            bad = try_select(idx)
+            err = str(bad.get("error", ""))
+            check(f"select({idx}) rejected", bad.get("ok") is False and err,
+                  repr(err[:80]))
+        try:
+            gl0 = asyncio.run(call("fl_pattern_get_length", {"index": 0}))
+        except Exception as e:
+            gl0 = {"ok": False, "error": str(e)}
         check("get_length(0) rejected", gl0.get("ok") is False)
     finally:
         # leave no garbage: rename the test pattern to the TMP marker --------

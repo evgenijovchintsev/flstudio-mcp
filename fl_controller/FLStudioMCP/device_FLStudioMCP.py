@@ -290,7 +290,7 @@ def _h_ping(params):
     return {
         "fl_version": _fl_version,
         "protocol_version": PROTOCOL_VERSION,
-        "build": "e2-patterns-v1",   # reload marker -- bump to verify reloads take
+        "build": "e2-patterns-v2",   # reload marker -- bump to verify reloads take
         "ts": time.time(),
     }
 
@@ -1109,14 +1109,15 @@ def _h_pattern_rename(p):
 
 
 def _h_pattern_get_length(p):
-    """Read one pattern: length in ticks/beats/4-4 bars (via RecPPQ) + name
-    and current selection -- doubles as the snapshot for scope pattern:N."""
+    """Read one pattern: length in beats (FL's native unit -- the docs say
+    getPatternLength returns BEATS, not ticks) + derived ticks/bars, name and
+    current selection -- doubles as the snapshot for scope pattern:N."""
     idx = int(p["index"])
     total = patterns.patternCount()
     if idx < 1 or idx > total:
         return {"ok": False,
                 "error": f"rejected index {idx}: pattern range is 1..{total}"}
-    ticks = patterns.getPatternLength(idx)
+    beats = patterns.getPatternLength(idx)
     try:
         ppq = int(general.getRecPPQ())
     except Exception:
@@ -1124,12 +1125,20 @@ def _h_pattern_get_length(p):
     if ppq < 1:
         ppq = 96
     try:
+        ppb = float(general.getRecPPB())
+    except Exception:
+        ppb = 0.0
+    if not ppb or ppb <= 0:
+        ppb = 4.0 * ppq                    # assume 4/4
+    beats_per_bar = ppb / ppq
+    try:
         selected = bool(patterns.isPatternSelected(idx))
     except Exception:
         selected = None
     return {"ok": True, "index": idx, "name": patterns.getPatternName(idx),
-            "length_ticks": int(ticks), "length_beats": round(ticks / ppq, 3),
-            "length_bars": round(ticks / (4.0 * ppq), 3), "ppq": ppq,
+            "length_beats": beats, "length_bars": round(beats / beats_per_bar, 3),
+            "length_ticks": int(beats * ppq), "ppq": ppq,
+            "beats_per_bar": beats_per_bar,
             "selected": selected, "current": patterns.patternNumber()}
 
 

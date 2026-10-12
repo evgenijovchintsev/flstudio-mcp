@@ -92,6 +92,6 @@ def register(mcp: FastMCP) -> None:
     def fl_pattern_get_length(
         index: Annotated[int, Field(ge=1, description="1-based pattern index.")],
     ) -> dict:
-        """Pattern length in ticks, beats and 4/4 bars (via RecPPQ), plus its
-        name and current selection state."""
+        """Pattern length in BEATS (FL's native unit) + derived ticks and bars
+        (via RecPPQ / RecPPB), plus its name and current selection state."""
         return get_bridge().call(protocol.CMD_PATTERN_GET_LENGTH, {"index": index})
