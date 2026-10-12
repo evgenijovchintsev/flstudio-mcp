@@ -35,8 +35,11 @@
 - `patterns.findFirstNextEmptyPat()` **сломан** в FL 26:
   `TypeError: function missing required argument 'flags'`.
   Fallback — `patterns.patternCount() + 1` (уже в `_h_arrange_new_pattern`).
-- `patterns.jumpToPattern` безопасен: 0 → 1, past-max → срез к `patternMax` (999),
-  пружин/создания паттернов нет (0/999/1000 проверены).
+- `patterns.jumpToPattern` безопасен **только для `index ≥ 0`**: 0 → 1,
+  past-max → срез к `patternMax` (999), пружин/создания паттернов нет
+  (0/999/1000 проверены). **`index < 0` крашит FL 26.1.7**
+  (EAccessViolation — main thread, мост получает FLTimeout; раунд 4) —
+  контроллер отклоняет `index < 1` до вызова (и в `op=pat`).
 - `patterns` **не удаляются** `api_probe op=undo` (`general.undo`) — проверено ×2.
 - `general.undo` (`op=undo`) **не откатывает** запись нот из pyscript — проверено.
 
@@ -47,7 +50,7 @@
 `plugins`, `transport`, `patterns`, `midi`, `arrangement`, `utils`, `sys`,
 `time` — **все 12 падают**: факт — прогон v3 (12 окт 17:41, deployed md5 =
 репо), в score только тоны 84+88, тонов 92–100 нет (см. `docs/API_PROBE_26.md`
-Q2, скриншот 17.41.01).
+Q2, скриншот 17.41.01 на Desktop — вне git по просьбе пользователя).
 `print()` в View → Script output **не виден**. Единственный канал обратной
 связи «скрипт отработал» — сами ноты в score. Идея «обойти сломанный
 `plugin_set_param` через pyscript внутри FL» — **мёртва**.
@@ -123,13 +126,17 @@ Q2, скриншот 17.41.01).
    Piano roll → Tools → Scripts (нет API для arm).
 Очистка нот: пустой `mode="replace"` реально чистит score (подтверждено
 `grid_bits` все 0).
+**Предупреждение:** после контрольного вызова 12 окт `MCP_Apply.pyscript`
+**заряжен** — `MODE='replace', NOTES=[]`. Любой запуск «Run last script again»
+/ «MCP Apply» сейчас **очистит весь score**. Перед запуском убедиться, что это
+то, что нужно (факт «пустой replace чистит» — подтверждён, это не сбой).
 
 ### Недеструктивная очистка (MCP_Read_Probe v3)
 `MCP_Read_Probe.pyscript` **не** делает `score.clearNotes(True)` (это стирает
 весь score). Он удаляет **только свои питчи** (84–100): snapshot (итерация
-`score.noteCount()` / `score.getNote(i)` — доказанный паттерн репо,
-`pyscript_gen.py:138`) → удаление из списка только нот с этими питчами →
-`clearNotes` → `addNote` обратно.
+`score.noteCount` / `score.getNote(i)` — доказанный паттерн репо,
+`pyscript_gen.py:138`; `noteCount` — **свойство**, без вызова) → удаление из
+списка только нот с этими питчами → `clearNotes` → `addNote` обратно.
 **Уточнение (острый край):** у переписанных чужих нот (питчи 84–100, если они
 встали пользователю) сбрасываются свойства кроме `number/time/length/velocity`
 (pan/fine/release/color не сохраняются — ноты пересоздаются как `Note`).
@@ -161,9 +168,15 @@ Q2, скриншот 17.41.01).
 - FL **не** перечитывает контроллер сам. «Update» в MIDI settings иногда не
   подхватывает новый файл; toggle порта тоже. **Надёжно** — перезапуск FL
   (проверено: после «Update» FL отдавал старый build, после перезапуска — новый).
+- **Дубль output (постоянный фикс, 12 окт):** FL при перезапуске/hot-plug
+  заново включает `FLStudioMCP RX` как output — раньше на Port 42 (тот же, что
+  у TX), и `midiOutSysex` уходил не туда → `alive:false`. Теперь RX-output
+  стоит на **Port 43** (TX = 42): коллизии нет, рестарт FL не ломает мост
+  (проверено: `fl_ping` ответил сразу после перезагрузки, `test_bridge`
+  зелёный). Ранее это описано в `docs/PHASE1A_REPORT.md` §5.
 - Маркеры билда (в `_h_ping`): `e0-probe-v16` → `v17` (op `jump`) →
-  `v18` (бюджет-пагинация op `step`). `fl_ping` первым делом, если что-то
-  ведёт себя странно.
+  `v18` (бюджет-пагинация op `step` + guard'ы jump/pat + budget op=dir).
+  `fl_ping` первым делом, если что-то ведёт себя странно.
 - Модальный диалог в FL блокирует RPC («Operation unsafe at current time») —
   закрывать (osascript System Events → click button).
 

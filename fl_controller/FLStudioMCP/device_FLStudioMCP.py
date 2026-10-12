@@ -913,15 +913,24 @@ def _h_api_probe(p):
             return {"module": p.get("module"), "error": "module not available"}
         names = [n for n in dir(mod) if not n.startswith("_")]
         start = max(0, int(p.get("start", 0)))      # budget-paginate (dir is large)
+        module_key = p.get("module", "playlist")
         out, i = [], start
         while i < len(names):
             out.append(names[i])
             i += 1
-            if len(json.dumps(out, separators=(",", ":"))) > 600 and len(out) > 1:
+            # Budget: measure the FULL returned envelope
+            # {module,total,start,next_start,names} like _paginate() -- names-only
+            # under-measured by the envelope bytes and first pages shipped
+            # 652-658 B (contract: data <= 600 B).
+            size = len(json.dumps(
+                {"module": module_key, "total": len(names), "start": start,
+                 "next_start": (i if i < len(names) else None), "names": out},
+                separators=(",", ":")))
+            if size > _LIST_BUDGET and len(out) > 1:
                 out.pop()
                 i -= 1
                 break
-        return {"module": p.get("module", "playlist"), "total": len(names),
+        return {"module": module_key, "total": len(names),
                 "start": start, "next_start": (i if i < len(names) else None), "names": out}
     if op == "step":
         # READ-ONLY (E-0 spike): no setters, no UI commands, nothing to undo.
@@ -971,6 +980,11 @@ def _h_api_probe(p):
         # READ-ONLY (E-0 spike): pattern metadata. No jump/rename/create.
         idx = int(p.get("index", 1))
         out = {"index": idx}
+        if idx < 1:
+            # patterns.* indexes are 1-based; FL 26 crashes on jumpToPattern
+            # (<0), so never hand a non-positive index to any patterns.* call.
+            out["index_error"] = f"rejected index {idx}: pattern indexes are >= 1"
+            return out
         probes = (
             ("name", lambda: patterns.getPatternName(idx)),
             ("length", lambda: patterns.getPatternLength(idx)),
@@ -997,6 +1011,15 @@ def _h_api_probe(p):
         idx = int(p.get("index", 1))
         back = int(p.get("back", patterns.patternNumber()))
         out = {"tried": idx, "start": back}
+        # GUARD: FL 26.1.7 CRASHES (EAccessViolation, main thread; bridge gets
+        # FLTimeout) on patterns.jumpToPattern(<0) -- observed in E-0 round 4.
+        # Never pass a negative index to FL; reject it here instead.
+        if idx < 1:
+            out["jump_error"] = (f"rejected index {idx}: jumpToPattern needs >= 1 "
+                                 "(FL crashes on <0)")
+            return out
+        if back < 1:
+            back = 1                  # restore target must be valid too
         try:
             patterns.jumpToPattern(idx)
             out["after_jump_number"] = patterns.patternNumber()

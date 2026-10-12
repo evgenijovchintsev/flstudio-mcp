@@ -126,7 +126,7 @@ def _marker_notes(pitches):
 
 
 def _run():
-    receipt = {"probe": "MCP_Read_Probe v2 (E-0)", "stage": "start"}
+    receipt = {"probe": "MCP_Read_Probe v3 (E-0)", "stage": "start"}
     receipt["first_write"] = {p: _try_write(p, receipt) for p in TARGETS}
 
     read_ok, data, read_err = _try_read(READ_PATH)
@@ -153,7 +153,7 @@ def _run():
             bits.append(pitch)
     _marker_notes(bits)                            # visible evidence
 
-    verdict = "E-0 probe v2: read=%s writes=%d/%d bits=%s" % (
+    verdict = "E-0 probe v3: read=%s writes=%d/%d bits=%s" % (
         "OK" if read_ok else ("FAIL %s" % read_err),
         len(ok_paths), len(TARGETS),
         ",".join(str(p) for p in bits),
@@ -172,9 +172,9 @@ def _run():
 try:
     _run()
 except Exception as e:
-    msg = "E-0 probe v2 CRASH: %s: %s" % (type(e).__name__, e)
+    msg = "E-0 probe v3 CRASH: %s: %s" % (type(e).__name__, e)
     for p in TARGETS:
-        _try_write(p, {"probe": "MCP_Read_Probe v2 (E-0)", "stage": "CRASH",
+        _try_write(p, {"probe": "MCP_Read_Probe v3 (E-0)", "stage": "CRASH",
                        "error": msg})
     try:
         _marker_notes([91])
