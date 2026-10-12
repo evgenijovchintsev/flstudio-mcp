@@ -22,9 +22,12 @@ Values are NORMALISED 0..1 (FL's setParamValue domain). The display string
 from fl_plugin_get_params (e.g. '3.6dB', '500Hz') tells you what a given
 normalised value maps to -- there is no generic unit->normalised conversion.
 
-Writes need the plugin window CLOSED: FL is then in a sensible state and
-accepts the value; with the window open (pickup mode) it is swallowed, which
-is exactly what the ``verified`` flag reports.
+Writes are VERIFIED on FL 26 rather than assumed: levels/gains take an
+arbitrary 0..1 value, stepped params (filter types, orders, selectors) snap to
+their own grid steps, some params (EQ2 band widths) ignore writes entirely,
+and an open plugin window (pickup mode) did not block script writes in our
+test. Whatever the cause, a miss is retried and then reported honestly as
+``verified: false`` with ``after`` showing what FL actually holds.
 """
 
 from __future__ import annotations
@@ -46,9 +49,13 @@ _WRITE_DELAY = 0.4
 # Re-writes after the first attempt (so up to 4 writes total, worst case).
 _MAX_ATTEMPTS = 3
 _MAX_BATCH = 16
-_HINT = ("value not accepted by FL -- close the plugin's window (pickup mode) "
-         "and retry; stepped params (filter types, modes, selectors) are not "
-         "writable through the API; values are the normalised 0..1 domain")
+_HINT = ("FL did not land this value. Measured on FL 26: some params ignore "
+         "writes entirely (EQ2 band widths), stepped params (types, orders, "
+         "selectors) snap to their own grid steps, and only some continuous "
+         "params (levels, gains) take an arbitrary 0..1 value. The plugin's "
+         "window being open did NOT block writes in our test (pickup mode "
+         "affects controller gestures). after.v / after.s show what FL "
+         "actually holds -- trust those over the request.")
 
 
 class ParamNotFound(ValueError):
@@ -172,13 +179,14 @@ def register(mcp: FastMCP) -> None:
         first try); ``attempts`` can reach 4 (1 write + 3 retries) and a
         ``hint`` explains a ``verified: false``.
 
-        RECIPE (FL API limits): close the plugin's window first -- open it and
-        FL runs in pickup mode, which silently swallows writes; stepped params
-        (filter types, modes, selectors) are not writable through the API at
-        all; values are the normalised 0..1 domain shown by
-        fl_plugin_get_params, with no unit->normalised conversion. When
-        ``verified`` is false, fix the window/param kind and call again rather
-        than trusting ``after``.
+        RECIPE (FL API limits, measured on FL 26): ``verified`` is the source
+        of truth, not the request. Levels/gains take an arbitrary 0..1 value;
+        stepped params (filter types, orders, selectors) snap to their own
+        grid, so an off-grid request comes back ``verified: false`` with the
+        snapped value in ``after``; some params (EQ2 band widths) ignore
+        writes entirely. An open plugin window (pickup mode) did not block
+        script writes in our test. Values are the normalised 0..1 domain shown
+        by fl_plugin_get_params -- read ``after.s`` for the display string.
         """
         bridge = get_bridge()
         idx, name = resolve_param_index(bridge, track, slot, param)
@@ -212,15 +220,16 @@ def register(mcp: FastMCP) -> None:
         to their original values in one step. Writes are paced 0.4 s apart
         (FL drops back-to-back writes), each is re-read and retried up to 3
         times if it did not land, and ``results`` reports per-param
-        ``{param, ok, verified, attempts, before, after}``.
+        ``{param, ok, verified, requested, attempts, before, after}``.
 
-        RECIPE (FL API limits): close the plugin's window first -- open it and
-        FL runs in pickup mode, which silently swallows writes; stepped params
-        (filter types, modes, selectors) are not writable through the API at
-        all; values are the normalised 0..1 domain shown by
-        fl_plugin_get_params, with no unit->normalised conversion. Prefer this
-        over repeated fl_plugin_set_param calls whenever 2+ knobs change: it
-        is one undo step and one paced burst instead of several.
+        RECIPE: same FL 26 limits as fl_plugin_set_param -- trust ``verified``,
+        not the request: stepped params snap to their grid, some params ignore
+        writes entirely, values are the normalised 0..1 domain (see that
+        tool's docstring for the full map). Prefer this over repeated
+        fl_plugin_set_param calls whenever 2+ knobs change: it is one undo
+        step and one paced burst instead of several. Worst case (every param
+        refused) is ~1.6 s of retries per entry, so a full 16-entry batch can
+        take ~25 s -- keep batches focused on the knobs you mean to change.
         """
         bridge = get_bridge()
         resolved = [resolve_param_index(bridge, track, slot, w.param)

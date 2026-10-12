@@ -33,13 +33,15 @@ This is the orchestration layer. Deep content lives in `references/`.
 
 ### Plugin parameter recipe
 
-Close the plugin's window before writing: open it and FL is in pickup mode,
-which silently swallows the write (the tool then honestly returns
-`verified: false`). Stepped parameters — filter types, orders, selectors —
-are not writable through the API at all. Values are the normalised 0..1
-domain shown by `fl_plugin_get_params`; read the display string (`3.6dB`,
-`500Hz`) to know what a value means. Check `verified` on every write; do not
-assume the requested value landed.
+Trust `verified`, not the request. Measured on FL 26 with Fruity Parametric
+EQ 2: levels and gains take an arbitrary 0..1 value; stepped parameters
+(filter types, orders, selectors) snap to their own grid, so an off-grid
+request comes back `verified: false` with the snapped value in `after`; some
+parameters (band widths) ignore writes entirely. An open plugin window
+(pickup mode) did not block script writes in our test. Values are the
+normalised 0..1 domain shown by `fl_plugin_get_params` — read the display
+string (`3.6dB`, `500Hz`) to know what a value means, and prefer
+`fl_plugin_set_params` for 2+ knobs (one undo step).
 
 ## When something fails
 
