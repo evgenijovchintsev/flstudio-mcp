@@ -5,7 +5,14 @@
 - fl_plugin_set_param(track, slot, param, value)
        ``param`` may be an int index OR a param name (e.g. "Decay time").
        Names are resolved server-side from the live param list. The write
-       routes through ``safety.safe_write`` so it is logged + rollback-able.
+       routes through ``safety.safe_write`` so it is logged + rollback-able,
+       and is VERIFIED: a re-read that misses the requested value (by more
+       than +-0.02) triggers up to 3 re-writes 0.4 s apart before the answer
+       reports ``verified`` / ``attempts`` / ``hint``.
+- fl_plugin_set_params(track, slot, writes=[{"param","value"}, ...])
+       the same thing for several params of ONE plugin: one rollback unit
+       (``safety.safe_write_group``), writes paced 0.4 s apart, per-param
+       verification, one changelog entry.
 
 Native FL plugins (Fruity Parametric EQ 2, Reeverb 2, ...) expose real param
 names and small counts, so name-based addressing is reliable for them. VST/AU
@@ -14,6 +21,10 @@ wrappers can report thousands of generic slots; for those prefer int indices.
 Values are NORMALISED 0..1 (FL's setParamValue domain). The display string
 from fl_plugin_get_params (e.g. '3.6dB', '500Hz') tells you what a given
 normalised value maps to -- there is no generic unit->normalised conversion.
+
+Writes need the plugin window CLOSED: FL is then in a sensible state and
+accepts the value; with the window open (pickup mode) it is swallowed, which
+is exactly what the ``verified`` flag reports.
 """
 
 from __future__ import annotations
@@ -21,14 +32,35 @@ from __future__ import annotations
 from typing import Annotated, Union
 
 from fastmcp import FastMCP
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from .. import protocol, safety
 from ..connection import fetch_all_pages, get_bridge
 
+# How far a re-read may sit from the requested normalised value and still
+# count as "landed" (FL rounds some params on the way back out).
+_VERIFY_TOL = 0.02
+# Live pacing between writes/retries -- the session-measured 0.3-0.5 s window.
+# Not the 0.06 s toggle coalescing window in safety._verify_retry.
+_WRITE_DELAY = 0.4
+# Re-writes after the first attempt (so up to 4 writes total, worst case).
+_MAX_ATTEMPTS = 3
+_MAX_BATCH = 16
+_HINT = ("value not accepted by FL -- close the plugin's window (pickup mode) "
+         "and retry; stepped params (filter types, modes, selectors) are not "
+         "writable through the API; values are the normalised 0..1 domain")
+
 
 class ParamNotFound(ValueError):
     """Raised when a param name cannot be resolved to a single index."""
+
+
+class ParamWrite(BaseModel):
+    """One entry of ``fl_plugin_set_params.writes``."""
+
+    param: Annotated[int | str,
+                     Field(description="Param index (int) or name (str, e.g. 'Band 1 level').")]
+    value: Annotated[float, Field(ge=0.0, le=1.0, description="Normalised 0..1.")]
 
 
 def _norm(s) -> str:
@@ -79,6 +111,23 @@ def resolve_param_index(bridge, track: int, slot: int, param):
                         % (param, track, slot, [p["name"] for p in params][:20]))
 
 
+def _param_scope(track: int, slot: int, idx: int) -> str:
+    return f"plugin_param:{track}:{slot}:{idx}"
+
+
+def _param_write(track: int, slot: int, idx: int, value: float) -> dict:
+    """One ``safe_write_group`` entry: set this param, restore its old value."""
+    return {
+        "snap_scope": _param_scope(track, slot, idx),
+        "command": protocol.CMD_PLUGIN_SET_PARAM,
+        "params": {"track": track, "slot": slot, "param": idx, "value": value},
+        # defaults bind the per-write identity; ``b`` is the snapshot
+        "restore": lambda b, _t=track, _s=slot, _i=idx: {
+            "command": protocol.CMD_PLUGIN_SET_PARAM,
+            "params": {"track": _t, "slot": _s, "param": _i, "value": b["v"]}},
+    }
+
+
 def register(mcp: FastMCP) -> None:
     _RO = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True}
     _WR = {"readOnlyHint": False, "destructiveHint": False,
@@ -113,20 +162,94 @@ def register(mcp: FastMCP) -> None:
                          Field(description="Param index (int) or name (str, e.g. 'Decay time').")],
         value: Annotated[float, Field(ge=0.0, le=1.0, description="Normalised 0..1.")],
     ) -> dict:
-        """Set one plugin parameter (normalised 0..1). ``param`` may be an
-        index or a name; names are resolved from the live param list. The
-        change is logged and undo-able via fl_rollback_last_change. Returns
-        before/after plus the resolved {index, name}."""
+        """Set one plugin parameter (normalised 0..1), then VERIFY it landed.
+
+        ``param`` may be an index or a name; names are resolved from the live
+        param list. The change is logged ONCE and undo-able via
+        fl_rollback_last_change. Returns before/after (unchanged shape) plus
+        the resolved {index, name} and, because the value is checked on a
+        fresh re-read, ``verified: bool`` and ``attempts: int`` (1 = it stuck
+        first try); ``attempts`` can reach 4 (1 write + 3 retries) and a
+        ``hint`` explains a ``verified: false``.
+
+        RECIPE (FL API limits): close the plugin's window first -- open it and
+        FL runs in pickup mode, which silently swallows writes; stepped params
+        (filter types, modes, selectors) are not writable through the API at
+        all; values are the normalised 0..1 domain shown by
+        fl_plugin_get_params, with no unit->normalised conversion. When
+        ``verified`` is false, fix the window/param kind and call again rather
+        than trusting ``after``.
+        """
         bridge = get_bridge()
         idx, name = resolve_param_index(bridge, track, slot, param)
-        scope = "plugin_param:%d:%d:%d" % (track, slot, idx)
+        w = _param_write(track, slot, idx, value)
         result = safety.safe_write(
-            bridge, tool="plugin_set_param", scope=scope,
-            command=protocol.CMD_PLUGIN_SET_PARAM,
-            params={"track": track, "slot": slot, "param": idx, "value": value},
-            build_restore=lambda b: {"command": protocol.CMD_PLUGIN_SET_PARAM,
-                                     "params": {"track": track, "slot": slot,
-                                                "param": idx, "value": b["v"]}})
+            bridge, tool="plugin_set_param", scope=w["snap_scope"],
+            command=w["command"], params=w["params"], build_restore=w["restore"],
+            verify_value=("v", value, _VERIFY_TOL),
+            verify_attempts=_MAX_ATTEMPTS, verify_delay=_WRITE_DELAY,
+        )
         if isinstance(result, dict):
             result["resolved_param"] = {"index": idx, "name": name}
+            if result.get("verified") is False:
+                result["hint"] = _HINT
         return result
+
+    @mcp.tool(annotations={"title": "Set several plugin parameters", **_WR})
+    def fl_plugin_set_params(
+        track: Annotated[int, Field(ge=0)],
+        slot: Annotated[int, Field(ge=0, le=9)],
+        writes: Annotated[list[ParamWrite],
+                          Field(min_length=1, max_length=_MAX_BATCH,
+                                description=f"1..{_MAX_BATCH} {{param, value}} "
+                                            "entries, all for this ONE plugin.")],
+    ) -> dict:
+        """Set several parameters of ONE plugin as a single rollback unit.
+
+        Every entry of ``writes`` (``{param, value}``; ``param`` is an index
+        or a name) is written through ONE safety.safe_write_group call: one
+        changelog entry, so fl_rollback_last_change restores ALL of them back
+        to their original values in one step. Writes are paced 0.4 s apart
+        (FL drops back-to-back writes), each is re-read and retried up to 3
+        times if it did not land, and ``results`` reports per-param
+        ``{param, ok, verified, attempts, before, after}``.
+
+        RECIPE (FL API limits): close the plugin's window first -- open it and
+        FL runs in pickup mode, which silently swallows writes; stepped params
+        (filter types, modes, selectors) are not writable through the API at
+        all; values are the normalised 0..1 domain shown by
+        fl_plugin_get_params, with no unit->normalised conversion. Prefer this
+        over repeated fl_plugin_set_param calls whenever 2+ knobs change: it
+        is one undo step and one paced burst instead of several.
+        """
+        bridge = get_bridge()
+        resolved = [resolve_param_index(bridge, track, slot, w.param)
+                    for w in writes]
+        res = safety.safe_write_group(
+            bridge, tool="plugin_set_params",
+            scope=f"plugin_params:{track}:{slot}",
+            writes=[_param_write(track, slot, idx, w.value)
+                    for w, (idx, _n) in zip(writes, resolved, strict=True)],
+            delay=_WRITE_DELAY,
+            verify_values=[("v", w.value, _VERIFY_TOL) for w in writes],
+            verify_attempts=_MAX_ATTEMPTS, verify_delay=_WRITE_DELAY,
+        )
+        if not isinstance(res, dict) or res.get("dry_run"):
+            return res                    # dry-run answers carry `planned` only
+        ver, att = res.get("verified") or [], res.get("attempts") or []
+        befores, afters = res.get("before") or [], res.get("after") or []
+        results = []
+        for k, (idx, name) in enumerate(resolved):
+            results.append({
+                "param": {"index": idx, "name": name},
+                "requested": writes[k].value,
+                "ok": bool(res.get("ok")),
+                "verified": ver[k] if k < len(ver) else None,
+                "attempts": att[k] if k < len(att) else None,
+                "before": befores[k] if k < len(befores) else None,
+                "after": afters[k] if k < len(afters) else None,
+            })
+        out = {"ok": True, "count": len(results), "results": results}
+        if any(r["verified"] is False for r in results):
+            out["hint"] = _HINT
+        return out
