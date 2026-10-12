@@ -3,12 +3,23 @@
 Дата: 12 окт 2026. FL **Producer Edition v26.1.7 [build 5419]**, bridge `protocol v2`,
 ветка `epic/E-0`. Все вызовы — «вызвал → прочитал результат», никаких догадок.
 
-Транспорт: `FLSTUDIO_MCP_TRANSPORT=tcp`. Тонкий RPC-хелпер из спайка:
-`rpc.py api_probe '{"op":"..."}'`. Контроллер развёрнут в
+Воспроизводимый вызов (daemon, newline-JSON на TCP 127.0.0.1:9787; формат —
+`daemon.py:33`, `{"op":"call","cmd":...,"params":{...}}`):
+
+```sh
+printf '%s\n' '{"op":"call","cmd":"api_probe","params":{"op":"ppq"}}' \
+  | nc 127.0.0.1 9787
+# или размер ответа (важно для бюджета SysEx, см. Q1):
+python scripts/rpc_call.py api_probe '{"op":"ppq"}'   # печатает payload bytes
+```
+
+Контроллер развёрнут в
 `~/Documents/Image-Line/FL Studio/Settings/Hardware/FLStudioMCP/`.
 
-Маркеры reload: `e0-probe-v16` → `e0-probe-v17` (добавлен op `jump`).
-FL **не** перечитывает контроллер сам — нужен ручной «Update» в MIDI settings.
+Маркеры reload: `e0-probe-v16` → `v17` (op `jump`) → `v18` (бюджет-пагинация
+op `step`). FL **не** перечитывает контроллер сам — нужен ручной «Update»
+в MIDI settings, а если и он не берёт — перезапуск FL (проверено: после
+«Update» FL продолжал отдавать v17, после перезапуска подхватил v18).
 
 ---
 
@@ -24,9 +35,15 @@ FL **не** перечитывает контроллер сам — нужен 
   `getStepParam`, `getCurrentStepParam`, `setStepParameterByIndex`, `fillEachNSteps`.
 - `dir(ui)` — 72 имени, есть `getStepEditMode` / `setStepEditMode`
   (setter подтверждён: `step_mode_has_setter: true`).
-- Живое чтение канала 0 (`grid_bits`): `[1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0]`
-  (до очистки диагностических нот). `grid_assigned` — все `true`.
-- После очистки нот: `grid_bits` канала 0 — все `[0,...]`.
+- **Пагинация `op=dir` подтверждена вживую:** `module=channels` →
+  `total: 54, next_start: 34` (страница отдана, остаток 20 имён).
+- **Бюджет `op=step` (исправлено в этом же эпике):** раньше `steps=64`
+  отдавал 64 бита одним ответом (~815 B) — это выше бюджета SysEx
+  (>1000 B молча теряется). Теперь окно ограничено **16 битами на вызов**
+  и пагинируется `start`/`next_start`, как `op=dir`. Замерено:
+  `steps=64, start=0` → 16 бит, `next_start: 16`, **431 B**;
+  `start=16` → 16 бит, `next_start: 32`. Живой ответ (канал 0):
+  `grid_bits=[1,0,1,1,0,0,...]` (шаги 0–3 активны), `run_script_api: false`.
 - **`ui.runScript` отсутствует** → `run_script_api: false`. Запустить pyscript
   извне API нельзя — только хоткей «Run last script again».
 
@@ -41,21 +58,33 @@ FL **не** перечитывает контроллер сам — нужен 
 **Гипотеза:** из pyscript-песочницы Piano roll можно достучаться до файлов и/или
 до широкого FL API.
 
-**Проверка:** `fl_pyscripts/MCP_Read_Probe.pyscript` v2 — пишет receipt в
+**Проверка:** `fl_pyscripts/MCP_Read_Probe.pyscript` v3 — пишет receipt в
 3 пути, читает `~/.flstudio-mcp/probe.json`, кодирует вердикт **нотами** в score
 (потому что `print()` в View → Script output не виден, а `ui` недоступен).
 
-Коды тонов (версия v2): `84`=скрипт дошёл до конца, `85`=read probe.json OK,
+*Контроль входного файла:* `~/.flstudio-mcp/probe.json` **создан заранее**
+(снаружи песочницы, обычным процессом; `ls -la` → mtime 11:38, до запуска
+пробы; содержимое `{"pitch":64,"msg":"E-0 read test","ts":...}`). Без этого
+контроля «read FAIL» ≠ «песочница блокирует» — мог бы быть просто отсутствующий
+файл. Наличие файла до запуска — обязательный шаг проверки Q2.
+
+Коды тонов (версия v3): `84`=скрипт дошёл до конца, `85`=read probe.json OK,
 `86`=хотя бы одна запись OK, `87`=import ui, `88`=import flpianoroll,
 `89`=import channels, `90`=import general, `91`=crash.
+**Все 13 import-проверок наблюдаемы** (каждый модуль кодируется своим тоном):
+`92`=mixer, `93`=plugins, `94`=transport, `95`=patterns, `96`=midi,
+`97`=arrangement, `98`=utils, `99`=sys, `100`=time.
 
 **Факт (запуск из меню Piano roll → Tools → Scripts → MCP Read Probe):**
 - В score появились **ровно 2 ноты: C7 (84) и E7 (88)**.
 - Расшифровка: скрипт **дошёл до конца** (84) и **`flpianoroll` импортируется** (88).
-- `85/86/87/89/90` отсутствуют →
-  - **чтение файла заблокировано** (receipt-файлов нет ни в одном из 3 путей),
-  - **запись файла заблокирована**,
-  - `ui`, `channels`, `general` **не импортируются** из песочницы Piano roll.
+- `85/86` отсутствуют → **чтение и запись файла заблокированы**
+  (receipt-файлов нет ни в одном из 3 путей; входной `probe.json` при этом
+  существовал — см. контроль выше, так что read FAIL ≠ «файла не было»).
+- `87/89/90/92–100` отсутствуют → из песочницы импортируются **только**
+  `flpianoroll` (+ `os`, `json`, которые нужны самому скрипту); `ui`, `channels`,
+  `general`, `mixer`, `plugins`, `transport`, `patterns`, `midi`, `arrangement`,
+  `utils`, `sys`, `time` — **нет**.
 
 **Вывод:** песочница Piano roll экспортирует **только `flpianoroll`**.
 Идея «обойти сломанный `plugin_set_param` через pyscript внутри FL» — **мёртв**.
@@ -68,13 +97,29 @@ FL **не** перечитывает контроллер сам — нужен 
 
 **Гипотеза:** платформенный триггер нот-моста (Cmd+Opt+Y) работает на macOS.
 
-**Проверка:** сценарий MCP_Apply → клик «Run last script again» в меню →
-затем нажатие **Cmd+Opt+Y**.
+**Проверка:** два отдельных прогона, чтобы не путать MCP_Read_Probe (диагностика
+песочницы) с MCP_Apply (запись нот):
+
+1. **Cmd+Opt+Y как «повторить последний скрипт»** — последним скриптом был
+   MCP Read Probe; после нажатия (руками, пользователем) score содержит
+   **ровно 2 ноты: C7 (84) и E7 (88)** — маркеры Read_Probe, перезаписанные
+   заново (предыдущая «серая» нота исчезла). Хоткей **перечитал файл скрипта**
+   и выполнил его — значит FL перезагружает .pyscript на каждый запуск.
+2. **Cmd+Opt+Y как триггер MCP_Apply** — `apply_notes` (пустой replace)
+   отправил хоткей после записи `MCP_Apply.pyscript`; FL отработал, и ноты
+   применились. Здесь маркеры 84/88 не участвуют — это отдельный канал.
 
 **Факт:**
 - Шорткат «Run last script again» = **Cmd+Opt+Y** (подтверждено в меню FL).
-- После Cmd+Opt+Y score содержит **ровно 2 ноты** (C7, E7) — скрипт
-  перезапустился, `clearNotes` отработал (предыдущая «серая» нота исчезла).
+- Хоткей перечитывает .pyscript с диска и выполняет его (п. 1) и триггерит
+  MCP_Apply (п. 2).
+- Важно для `AGENT.md`: старая заметка «хоткей через pyautogui/osascript
+  теряет модификаторы» относится к **автоматизации извне** (pyautogui/osascript
+  шлут хоткей). Здесь хоткей **нажат вручную пользователем** — и работает.
+  Это **не** противоречие, а разные каналы: ручной — надёжный, автоматический
+  извне — ненадёжный (модификаторы теряются). Вывод E-0: автоматический
+  автотриггер не использовать (в Q1 подтверждено `run_script_api: false`);
+  ручной запуск/хоткей — рабочий путь.
 
 **Вывод:** нот-мост **работает на macOS**. Единственный ручной шаг сессии —
 запустить «MCP Apply» один раз из меню, чтобы он стал «last script»
@@ -103,6 +148,10 @@ FL **не** перечитывает контроллер сам — нужен 
   `TypeError: function missing required argument 'flags' (pos 1)`.
   Работающий обход уже в контроллере `_h_arrange_new_pattern`:
   `try findFirstNextEmptyPat() except → patternCount() + 1`.
+- **Cleanup (выполнен):** тестовый `E0TEST` удалён вручную (правый клик по
+  паттерну 2 → Delete; API-удаления паттернов нет, `op=undo` его не убирает —
+  проверено дважды). После очистки: `pattern_list total=1`,
+  `pattern_count=1, pattern_number=1`. Проект вернулся к исходному состоянию.
 
 **Вывод:** `jumpToPattern` **безопасен** (срез к `[1, max]`, без создания).
 `findFirstNextEmptyPat` **сломан в FL 26** (нужен `flags`) — fallback
@@ -114,18 +163,35 @@ FL **не** перечитывает контроллер сам — нужен 
 
 **Гипотеза:** для кликов по FL нужны знаменатели «screencapture ↔ logical».
 
-**Проверка:** `screencapture` + замер таймингов.
+**Проверка (команды-измерители, воспроизводимы):**
 
-**Факт:**
-- `screencapture` ~**0.16 с**; `pyautogui.screenshot()` ~**0.27 с**
-  (медленнее — **screencapture предпочтительнее** для снапшотов).
-- Разрешение экрана **3420×2214**; logical-пространство **1710×1107**
-  → знаменатель ≈ **1.71** (не 2.0, как в части старых заметок).
-- Для кликов: `logical = screenshot_px / 1.71`.
+```python
+# logical-пространство (координаты, в которых FL рисует и которые принимает pyautogui)
+import pyautogui; print(pyautogui.size())          # -> Size(width=1710, height=1107)
 
-**Вывод:** `screencapture` — быстрее и достаточен. Координаты для pyautogui-кликов
-делить на **1.71**. (Замечание к `AGENT.md`: коэффициент 1710/2000=0.855 из
-старых заметок **не подтверждается** — актуален 1.71.)
+# пиксельные размеры PNG от screencapture
+import subprocess; subprocess.run(["screencapture", "-x", "/tmp/m.png"], check=True)
+import subprocess; print(subprocess.run(
+    ["sips", "-g", "pixelWidth", "-g", "pixelHeight", "/tmp/m.png"],
+    capture_output=True, text=True).stdout)         # -> pixelWidth 3420, pixelHeight 2214
+
+# тайминги (3 прогона, среднее)
+import time, subprocess
+t = [time.time() or subprocess.run(["screencapture", "-x", "/tmp/t.png"], check=True)
+     or time.time() for _ in range(3)]              # ~0.18 с на прогон
+```
+
+**Факт (замерено на этом экране):**
+- `pyautogui.size()` = **1710×1107** (logical, точки).
+- PNG от `screencapture -x` = **3420×2214** (пиксели).
+- Знаменатель = 3420/1710 = **2.0 ровно** (не 1.71 — прежняя цифра была ошибкой).
+- `screencapture` ≈ **0.18 с**; `pyautogui.screenshot()` ≈ **0.27 с** (медленнее).
+
+**Вывод:** `screencapture` — быстрее и достаточен для снапшотов. Координаты для
+pyautogui-кликов: `logical = screenshot_px / 2.0`. Никогда не смешивать три числа,
+которые гуляли по заметкам (0.855 = 1710/2000, 1.71 — обе неверны): на этом
+экране коэффициент **ровно 2.0**, и он всегда = `pixelWidth / logical_width`
+(пересчитать на другом разрешении, не хардкодить).
 
 ---
 
@@ -150,28 +216,75 @@ FL **не** перечитывает контроллер сам — нужен 
 
 | Вопрос | Ответ |
 |---|---|
-| Q1 step-сетка | **Да**, бит-доступ полный; но `ui.runScript` нет → автозапуск скриптов невозможен |
-| Q2 pyscript | **Только `flpianoroll`**; файлы и широкий FL API недоступны; обратная связь — ноты |
-| Q3 хоткей | **Cmd+Opt+Y работает** на macOS; ручной arm MCP Apply — один раз за сессию |
-| Q4 паттерны | `jumpToPattern` безопасен (срез `[1,max]`, без создания); `findFirstNextEmptyPat` **сломан** (`flags`) → fallback `count+1` |
-| Q5 скриншоты | `screencapture` 0.16 с; logical = px / **1.71** |
+| Q1 step-сетка | **Да**, бит-доступ полный (16 бит/страница, `start`/`next_start`, 431 B); `ui.runScript` нет → автозапуск скриптов невозможен |
+| Q2 pyscript | **Только `flpianoroll`** (+ os/json); файлы и широкий FL API недоступны (все 13 import-проверок наблюдаемы нотами); обратная связь — ноты |
+| Q3 хоткей | **Cmd+Opt+Y работает** вручную (перечитывает .pyscript); автоматический автотриггер извне — ненадёжен (модификаторы) |
+| Q4 паттерны | `jumpToPattern` безопасен (срез `[1,max]`, без создания); `findFirstNextEmptyPat` **сломан** (`flags`) → fallback `count+1`; cleanup E0TEST выполнен |
+| Q5 скриншоты | `screencapture` 0.18 с; logical = px / **2.0** (3420/1710) |
 | Q6 цвета/пресеты | Форматы стабильны, читаются напрямую |
 
 ## Связь с эпиками
 
-- **E-2 / E-6 (arrangement / мост нот):** Q1 даёт чтение step-сетки;
-  Q2 запрещает pyscript как канал управления; Q3 закрывает платформу;
-  Q4 (fallback `count+1`, безопасный `jump`) — прямые инструкции для
+- **E-2 / E-6 (arrangement / мост нот):** Q1 даёт чтение step-сетки (пагинация
+  учтена); Q2 запрещает pyscript как канал управления; Q3 закрывает платформу;
+  Q4 (fallback `count+1`, безопасный `jump`, cleanup) — прямые инструкции для
   `arrange_new_pattern` / `arrange_clone_pattern`.
-- **E-5 (macOS-совместимость):** Q3 (хоткей) + Q5 (1.71, screencapture).
+- **E-5 (macOS-совместимость):** Q3 (ручной хоткей надёжен, автотриггер — нет)
+  + Q5 (**2.0**, screencapture).
 - **E-6 (presets/colors):** Q6 — готовые форматы.
 
 ## Что осталось непокрытым
 
 - `findFirstNextEmptyPat` с корректным `flags` — не исследовано (нужен вызов
   с аргументом; fallback `count+1` достаточен для E-6).
-- Поведение `jumpToPattern` на отрицательных индексах — не проверено.
+- Поведение `jumpToPattern` на отрицательных индексах — не проверено
+  (0/999/1000 проверены, отрицательные — нет).
 - `ui.getFocused(wid)` без аргумента падает (`takes exactly 1 argument`) —
   wid брать из `midi.widPianoRoll` и т.п.
 - Автозапуск скриптов извне — **невозможен** (`run_script_api: false`);
   каждый сеанс требует одного ручного «MCP Apply».
+- Юнит-тестов нет (по плану — E-8); живое покрытие — прогоны, описанные ниже.
+
+---
+
+## Воспроизводимость (DoD-цифры и команды)
+
+**ruff (статика, `ruff 0.17.0`).** Команда и бейзлайн:
+
+```sh
+python -m ruff check .            # весь репозиторий
+```
+
+| Граница | Ошибок |
+|---|---|
+| HEAD (бейзлайн до спайка) | **693** |
+| после изменений спайка | **693** (дельта **0**) |
+
+Изменённые файлы спайка (дельта по каждому = 0):
+
+| Файл | ruff |
+|---|---|
+| `fl_controller/FLStudioMCP/device_FLStudioMCP.py` | 19 → 19 |
+| `src/fl_studio_mcp/protocol.py` | 6 → 6 |
+| `fl_pyscripts/MCP_Read_Probe.pyscript` | 9 → 9 |
+| `scripts/test_bridge.py` | 7 → 7 |
+| `scripts/rpc_call.py` (новый) | 0 (All checks passed) |
+
+**Живой smoke (DoD).** Команда и вывод `scripts/test_bridge.py` —
+`FLSTUDIO_MCP_TRANSPORT=tcp python scripts/test_bridge.py`:
+
+```
+  ping............................................ ok
+      {'fl_version': 'Producer Edition v26.1.7 [build 5419]', 'protocol_version': 2, 'build': 'e0-probe-v18', ...}
+  get_tempo / set_tempo 135.0 / restore 130.0...... ok
+  play............................................ ok
+  stop............................................. ok
+  toggle_play (1st / 2nd)  True -> False.......... ok
+  record (1st -> arm / 2nd -> disarm)............. ok
+  cleanup (stopped / disarmed / pos reset): {'playing': False, 'recording': False}
+
+All checks passed.
+```
+
+Финальный cleanup оставляет `playing: False, recording: False` — зонтик DoD
+«не оставлять запись включённой» выполняется. Билд-маркер в ping — `e0-probe-v18`.

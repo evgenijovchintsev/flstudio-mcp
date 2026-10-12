@@ -2,11 +2,15 @@
 # Script.Author = "rosasynthesiz"
 # Script.Category = "MCP"
 #
-# E-0 spike v2 -- file I/O verdict for the piano-roll pyscript sandbox on FL 26.
+# E-0 spike v3 -- file I/O verdict for the piano-roll pyscript sandbox on FL 26.
 #
 # File I/O in this sandbox is expected to be blocked, and `print()` output is not
 # visible in View > Script output, so the verdict is ALSO encoded as piano-roll
 # notes (one note per check) -- readable from a screenshot, clearable by undo.
+#
+# NON-DESTRUCTIVE: this script never clears the score. It only removes notes it
+# owns (the MARKER_PITCHES below) and then writes its own markers, so running it
+# cannot destroy the user's notes. An undo (Cmd+Z) removes the markers it left.
 #
 #   notes at bar 0 (length 0.1 bar, vel 0.9):
 #     C6 (84) = script reached the end at all
@@ -17,6 +21,11 @@
 #     F6 (89) = channels importable
 #     F#6(90) = general importable            (undo possible)
 #     G6 (91) = crash in _run()               (instead of C6)
+#
+#   import probes (one note each, only present when that module imported OK):
+#     G#6(92) = mixer       A6(93) = plugins     A#6(94) = transport
+#     B6 (95) = patterns    C7 (96) = midi       C#7(97) = arrangement
+#     D7 (98) = utils       D#7(99) = sys        E7 (100) = time
 #
 # Run from Piano roll > Tools > Scripts > MCP Read Probe (Cmd+Opt+Y re-runs last).
 
@@ -29,6 +38,19 @@ TARGETS = [
     "/tmp/flmcp_apply_receipt.json",
     os.path.expanduser("~/Desktop/e0_apply_receipt.json"),
 ]
+
+# Every pitch this script may ever write. Deleting only these leaves any other
+# note in the score untouched -- the script is safe to run on a real pattern.
+MARKER_PITCHES = (84, 85, 86, 87, 88, 89, 90, 91,
+                  92, 93, 94, 95, 96, 97, 98, 99, 100)
+
+# Module -> marker pitch for the import probe (all of them are now observable).
+IMPORT_PITCHES = (
+    ("ui", 87), ("flpianoroll", 88), ("channels", 89), ("general", 90),
+    ("mixer", 92), ("plugins", 93), ("transport", 94), ("patterns", 95),
+    ("midi", 96), ("arrangement", 97), ("utils", 98), ("sys", 99),
+    ("time", 100),
+)
 
 
 def _try_write(path, obj):
@@ -60,14 +82,34 @@ def _imports():
     return out
 
 
-def _marker_notes(pitches):
-    """Write one short note per pitch at bar 0. Replaces whatever is there."""
-    import flpianoroll as flp
-    score = flp.score
+def _clear_own_markers(score):
+    """Remove only the notes this script owns (MARKER_PITCHES).
+
+    The score API exposes no targeted delete, so we snapshot the score, drop
+    the owned pitches, and rewrite it. Anything not in MARKER_PITCHES survives
+    untouched -- unlike the old clearNotes(True), which wiped the whole score.
+    """
+    keep = []
+    for n in score:
+        if int(getattr(n, "number", -1)) not in MARKER_PITCHES:
+            keep.append((int(n.number), int(n.time), int(n.length),
+                         float(n.velocity)))
     try:
         score.clearNotes(True)     # FL 25.2.5: positional, no keyword
     except TypeError:
         score.clearNotes()
+    import flpianoroll as flp
+    for pitch, t, length, vel in keep:
+        n = flp.Note()
+        n.number, n.time, n.length, n.velocity = pitch, t, length, vel
+        score.addNote(n)
+
+
+def _marker_notes(pitches):
+    """Replace only OUR markers with `pitches`; leave every other note alone."""
+    import flpianoroll as flp
+    score = flp.score
+    _clear_own_markers(score)
     step = score.PPQ // 4          # 1/16 note
     for i, pitch in enumerate(pitches):
         n = flp.Note()

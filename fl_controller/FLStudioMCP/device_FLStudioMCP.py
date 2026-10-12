@@ -290,7 +290,7 @@ def _h_ping(params):
     return {
         "fl_version": _fl_version,
         "protocol_version": PROTOCOL_VERSION,
-        "build": "e0-probe-v17",   # reload marker -- bump to verify reloads take
+        "build": "e0-probe-v18",   # reload marker -- bump to verify reloads take
         "ts": time.time(),
     }
 
@@ -888,10 +888,18 @@ def _h_api_probe(p):
                 grid bits of one channel (channels.getGridBit /
                 isGridBitAssigned), ui.getStepEditMode, focus + hint (for the
                 macOS hotkey diagnosis) and piano-roll visibility. No writes.
+                Budget-limited: at most 16 grid steps per call, windowed by
+                start/next_start (grid bits are the only variable-length part;
+                the focus/hint block is fixed and returned on every page).
       pat    -> READ-ONLY pattern metadata: getPatternName/getPatternLength/
                 getPatternColor/isPatternSelected for one index, plus
                 patternCount/patternNumber/patternMax/findFirstNextEmptyPat.
                 No jump, no rename, no create.
+      jump   -> READ-ONLY patterns.jumpToPattern bounds probe: jumps to
+                `index`, reports patternNumber, then jumps back to `back`
+                (defaults to the pattern selected at entry) so the project
+                selection is restored. Creates no patterns (verified 0/999/
+                1000 all leave patternCount unchanged).
       marker_add -> arrangement.addAutoTimeMarker(time, name)
       undo   -> general.undoUp() (best-effort, to remove a test marker)
     """
@@ -917,11 +925,18 @@ def _h_api_probe(p):
                 "start": start, "next_start": (i if i < len(names) else None), "names": out}
     if op == "step":
         # READ-ONLY (E-0 spike): no setters, no UI commands, nothing to undo.
+        # Budget (00 §2.2): grid bits are the only variable-length part, so the
+        # window is capped at 16 per call and paginated via start/next_start --
+        # the same contract as op dir. Focus/hint are fixed-size and returned
+        # on every page. Without this cap steps=64 overflowed the SysEx budget
+        # (~670-888 B), which the transport drops silently.
         ch = int(p.get("channel", 0))
-        steps = max(1, min(64, int(p.get("steps", 16))))
+        steps = max(1, min(64, int(p.get("steps", 16))))     # hard read cap
+        start = max(0, min(steps - 1, int(p.get("start", 0))))
+        end = min(steps, start + 16)                          # 16 per page
         bits, assigned = [], []
         bit_err = None
-        for i in range(steps):
+        for i in range(start, end):
             try:
                 bits.append(1 if channels.getGridBit(ch, i) else 0)
             except Exception as e:
@@ -931,7 +946,9 @@ def _h_api_probe(p):
                 assigned.append(bool(channels.isGridBitAssigned(ch, i)))
             except Exception:
                 assigned.append(None)
-        out = {"channel": ch, "grid_bits": bits, "grid_assigned": assigned}
+        out = {"channel": ch, "steps": steps, "start": start, "next_start": (
+            (start + len(bits)) if (bit_err is None and start + len(bits) < steps)
+            else None), "grid_bits": bits, "grid_assigned": assigned}
         if bit_err:
             out["grid_error"] = bit_err
         probes = (
