@@ -104,3 +104,5 @@ stale receipt deleted, TMP_E6 pattern (index 2) left for manual removal
   is now disproved — the file-based path is blocked too — so E-7 is
   expected to land `blocked` with this quote, or find a channel we
   haven't proved absent yet.
+  **(Done — E-7 landed BLOCKED, `docs/E7_REPORT.md`: full-module probe
+  found no score-read API anywhere; `applied` stays `"unknown"`.)**
