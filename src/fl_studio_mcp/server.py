@@ -34,15 +34,15 @@ from .tools import compose as compose_tools
 from .tools import export as export_tools
 from .tools import mix_doctor as mix_doctor_tools
 from .tools import mixing as mixing_tools
-from .tools import phase1 as phase1_tools
 from .tools import pattern as pattern_tools
+from .tools import phase1 as phase1_tools
 from .tools import pianoroll as pianoroll_tools
 from .tools import plugin as plugin_tools
 from .tools import presets as presets_tools
 from .tools import resources as resource_defs
 from .tools import routing as routing_tools
 from .tools import transport as transport_tools
-
+from .tools import visual as visual_tools
 
 logger = logging.getLogger("fl_studio_mcp")
 
@@ -102,6 +102,7 @@ def build_server() -> FastMCP:
     presets_tools.register(mcp)     # Preset suggester: read preset names from disk
     mix_doctor_tools.register(mcp)  # Mix Doctor: diagnose whole mix + gated apply-fixes
     pattern_tools.register(mcp)     # E-2: pattern list/select/rename/get_length
+    visual_tools.register(mcp)      # E-3: fl_screenshot (agent debugging)
     return mcp
 
 
