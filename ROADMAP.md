@@ -131,15 +131,17 @@ so it ships inside the wheel.
 
 ## Phase 7 — Polish & ship
 
-- [ ] `skills/flstudio-production/SKILL.md` orchestration layer with deep
-      content in `references/`. Under 500 lines.
-- [ ] `evals/evals.json` — 10 questions exercising the full tool surface.
+- [x] `skills/flstudio-production/SKILL.md` orchestration layer (100 lines;
+      planned `references/` deep content was dropped — never shipped, links
+      would dangle).
+- [x] `evals/evals.json` — 10 scenarios exercising the full tool surface.
 - [ ] `.claude-plugin/marketplace.json` so this can live in
       `rosasynthesiz-skills` as an installable plugin.
-- [ ] `AGENTS.md` describing the agentic workflow for future Claude sessions
+- [x] `AGENTS.md` describing the agentic workflow for future Claude sessions
       working on this codebase.
 - [ ] Demo video and screenshots in `docs/`.
-- [ ] GitHub Actions for linting and the standalone bridge tests (mock FL).
+- [x] GitHub Actions for linting and unit tests (`.github/workflows/ci.yml`,
+      ruff + pytest on py3.10/3.12, no FL needed).
 - [ ] Pin a known-working FL Studio version range in README.
 
 ## Out of scope (intentionally)

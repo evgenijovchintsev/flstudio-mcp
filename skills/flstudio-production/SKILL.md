@@ -24,9 +24,9 @@ This is the orchestration layer. Deep content lives in `references/`.
 | Tempo, play, stop | `fl_set_tempo`, `fl_play`, `fl_stop`, `fl_toggle_play` |
 | Where are we in the song | `fl_get_song_position` |
 | Drum patterns | `fl_channel_get_grid` (read the bit grid), `fl_channel_set_grid_bit` / `_set_grid_bits` (draw steps, velocity 0..127), `fl_channel_clear_grid` — Channel Rack, NOT the Piano Roll |
-| Mixer levels | `fl_mixer_set_volume`, `_set_pan` (Phase 2) |
-| Melody in a raga | `fl_preset_write_raga_melody` (Phase 6) which calls Piano Roll under the hood |
-| Kuthu beat | `fl_preset_write_kuthu_pattern` (Phase 6) |
+| Mixer levels | `fl_set_mixer_volume`, `fl_set_mixer_pan` |
+| Melody in a raga | `fl_write_raga_melody` / `fl_write_raga_chords` — generates the swaras and writes via the Piano Roll note bridge |
+| Kuthu beat | `fl_channel_set_grid_bits` — kuthu/gaana is a Channel Rack step pattern (velocity 0..127), not a Piano Roll melody |
 | Read a plugin's knobs | `fl_plugin_list`, `fl_plugin_get_params` (names + normalised 0..1 values) |
 | Change one knob | `fl_plugin_set_param` — answers `verified` / `attempts`; a `hint` means FL refused the value |
 | Change several knobs of one plugin | `fl_plugin_set_params` — one paced burst, ONE undo step; prefer it over repeating the single tool |
@@ -93,8 +93,6 @@ Security → Screen Recording.
 
 ## References
 
-- `references/limits.md` — FL API constraints.
-- `references/ragas.md` — How the Carnatic raga preset pack is organised.
-- `references/kuthu.md` — Kuthu / gaana rhythm vocabulary.
-
-(These references are written as Phase 6 ships.)
+- `AGENTS.md` — repo contracts and check commands for agents working on the code.
+- `docs/E*_REPORT.md` — per-epic decisions (why a tool answers "unknown", why
+  preset navigation has no rollback, etc.).
