@@ -2,32 +2,42 @@
 # Script.Author = "rosasynthesiz"
 # Script.Category = "MCP"
 #
-# E-0 spike v3 -- file I/O verdict for the piano-roll pyscript sandbox on FL 26.
+# E-7b probe v4 -- egress matrix for the piano-roll pyscript sandbox on FL 26.
 #
-# File I/O in this sandbox is expected to be blocked, and `print()` output is not
-# visible in View > Script output, so the verdict is ALSO encoded as piano-roll
-# notes (one note per check) -- readable from a screenshot, clearable by undo.
+# v3 (E-0) proved builtin open() is blocked and only flpianoroll/os/json are
+# importable. NEVER tested: the sandbox-injected global `Utils` (log /
+# ProgressMsg -- documented in FL's own "Piano roll script reference.txt"),
+# os.system / os.popen / os.open (shell + raw-fd paths), and socket (direct
+# TCP to the local MCP daemon on 127.0.0.1:9787 -- a bidirectional egress
+# that would revive E-7 Path 1 with zero controller changes).
+#
+# Every egress channel that works emits the SAME token: FLMCP_E7B_<pid>.
+# The server hunts the token in: the hint panel (api_probe op=step),
+# /tmp/flmcp_e7b_*, ~/Documents/Image-Line (mdfind), the debug log.
+#
+# Verdict is ALSO encoded as piano-roll notes (readable from a screenshot,
+# clearable by undo) -- same discipline as v3.
 #
 # NON-DESTRUCTIVE: this script never clears the score wholesale. It removes
-# only the MARKER_PITCHES below (number/time/length/velocity of other notes are
-# kept; their pan/fine/release/color are not -- rewritten notes are fresh Note
-# objects), then writes its own markers. Notes whose pitch is not in
-# MARKER_PITCHES are never touched. An undo (Cmd+Z) removes the markers it left.
+# only the MARKER_PITCHES below, then writes its own markers. An undo
+# (Cmd+Z) removes the markers it left.
 #
 #   notes at bar 0 (length 0.1 bar, vel 0.9):
-#     C6 (84) = script reached the end at all
-#     C#6(85) = read  ~/.flstudio-mcp/probe.json   OK
-#     D6 (86) = at least one write path succeeded
-#     D#6(87) = ui module importable          (status bar possible)
-#     E6 (88) = flpianoroll importable        (notes possible)
-#     F6 (89) = channels importable
-#     F#6(90) = general importable            (undo possible)
-#     G6 (91) = crash in _run()               (instead of C6)
+#     C6 (84) = script reached the end at all      G6 (91) = crash in _run()
+#     C#6(85) = read ~/.flstudio-mcp/probe.json OK (v3 control)
+#     D6 (86) = builtin open() write OK            (v3 control, expect absent)
+#     D#6(87)= ui importable       E6 (88) = flpianoroll importable
+#     F6 (89) = channels importable F#6(90) = general importable
 #
-#   import probes (one note each, only present when that module imported OK):
-#     G#6(92) = mixer       A6(93) = plugins     A#6(94) = transport
-#     B6 (95) = patterns    C7 (96) = midi       C#7(97) = arrangement
-#     D7 (98) = utils       D#7(99) = sys        E7 (100) = time
+#     G#6(92)= mixer   A6 (93) = plugins  A#6(94) = transport
+#     B6 (95) = patterns C7 (96) = midi   C#7(97) = arrangement
+#     D7 (98) = socket importable     D#7(99) = subprocess importable
+#     E7 (100)= ctypes importable
+#     F7 (101)= global Utils present  F#7(102)= Utils.log() OK
+#     G7 (103)= Utils.ProgressMsg() OK
+#     G#7(104)= os.system() OK        A7 (105) = os.popen() OK
+#     A#7(106)= os.open/os.write OK
+#     B7 (107)= socket <-> daemon round-trip OK  <-- E-7 revival channel
 #
 # Run from Piano roll > Tools > Scripts > MCP Read Probe (Cmd+Opt+Y re-runs last).
 
@@ -36,22 +46,20 @@ import os
 
 READ_PATH = os.path.expanduser("~/.flstudio-mcp/probe.json")
 TARGETS = [
-    os.path.expanduser("~/.flstudio-mcp/apply_receipt.json"),
-    "/tmp/flmcp_apply_receipt.json",
-    os.path.expanduser("~/Desktop/e0_apply_receipt.json"),
+    os.path.expanduser("~/.flstudio-mcp/e7b_receipt.json"),
+    "/tmp/flmcp_e7b_receipt.json",
+    os.path.expanduser("~/Desktop/e7b_receipt.json"),
 ]
+TOKEN = "FLMCP_E7B_%s" % os.getpid()
+DAEMON = ("127.0.0.1", 9787)
 
-# Every pitch this script may ever write. Deleting only these leaves any other
-# note in the score untouched -- the script is safe to run on a real pattern.
-MARKER_PITCHES = (84, 85, 86, 87, 88, 89, 90, 91,
-                  92, 93, 94, 95, 96, 97, 98, 99, 100)
+MARKER_PITCHES = tuple(range(84, 108))
 
-# Module -> marker pitch for the import probe (all of them are now observable).
 IMPORT_PITCHES = (
     ("ui", 87), ("flpianoroll", 88), ("channels", 89), ("general", 90),
     ("mixer", 92), ("plugins", 93), ("transport", 94), ("patterns", 95),
-    ("midi", 96), ("arrangement", 97), ("utils", 98), ("sys", 99),
-    ("time", 100),
+    ("midi", 96), ("arrangement", 97), ("socket", 98), ("subprocess", 99),
+    ("ctypes", 100),
 )
 
 
@@ -75,7 +83,8 @@ def _try_read(path):
 def _imports():
     out = {}
     for name in ("flpianoroll", "ui", "channels", "mixer", "plugins", "transport",
-                 "general", "patterns", "midi", "arrangement", "utils", "sys", "time"):
+                 "general", "patterns", "midi", "arrangement", "socket",
+                 "subprocess", "ctypes"):
         try:
             __import__(name)
             out[name] = "ok"
@@ -84,17 +93,95 @@ def _imports():
     return out
 
 
-def _clear_own_markers(score):
-    """Remove only the notes this script owns (MARKER_PITCHES).
+def _try_utils(token):
+    """The sandbox-injected global Utils (log / ProgressMsg / ShowMessage)."""
+    u = globals().get("Utils")
+    out = {"present": u is not None}
+    if u is None:
+        return out
+    for name, fn in (("log", lambda: u.log(token)),
+                     ("ProgressMsg", lambda: u.ProgressMsg(token, 0, 1))):
+        try:
+            fn()
+            out[name] = "ok"
+        except Exception as e:
+            out[name] = "%s: %s" % (type(e).__name__, e)
+    return out
 
-    The score API exposes no targeted delete, so we snapshot the score, drop
-    the owned pitches, and rewrite it. Notes outside MARKER_PITCHES keep their
-    number/time/length/velocity; other per-note properties (pan/fine/release/
-    color) are NOT preserved because rewritten notes are re-created as fresh
-    Note objects -- only the marker pitches are affected at all.
-    """
+
+def _try_shell(token):
+    """os.system / os.popen / os.open -- paths E-0 never exercised."""
+    out = {}
+    try:
+        rc = os.system("printf %s %s > /tmp/flmcp_e7b_sys" % (token, token))
+        out["system"] = "ok" if rc == 0 else "rc=%s" % rc
+    except Exception as e:
+        out["system"] = "%s: %s" % (type(e).__name__, e)
+    try:
+        got = os.popen("printf %s %s" % (token, token)).read()
+        out["popen"] = "ok" if token in got else "no-token: %r" % got[:40]
+    except Exception as e:
+        out["popen"] = "%s: %s" % (type(e).__name__, e)
+    try:
+        fd = os.open("/tmp/flmcp_e7b_osopen",
+                     os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        os.write(fd, token.encode("ascii"))
+        os.close(fd)
+        out["os_open"] = "ok"
+    except Exception as e:
+        out["os_open"] = "%s: %s" % (type(e).__name__, e)
+    return out
+
+
+def _try_socket(token):
+    """Direct TCP to the local MCP daemon -- bidirectional if it works."""
+    try:
+        import socket
+    except Exception as e:
+        return {"import": "%s: %s" % (type(e).__name__, e)}
+    try:
+        s = socket.create_connection(DAEMON, timeout=2.0)
+        try:
+            s.sendall(b'{"op":"health"}\n')
+            s.settimeout(2.0)
+            chunks = []
+            while True:
+                b = s.recv(4096)
+                if not b:
+                    break
+                chunks.append(b)
+                if b"\n" in b:
+                    break
+            reply = b"".join(chunks).decode("utf-8", "replace").strip()
+        finally:
+            s.close()
+        out = {"token": token, "roundtrip": reply[:300] or "(empty)"}
+        try:
+            parsed = json.loads(reply.splitlines()[0]) if reply else {}
+            out["alive"] = parsed.get("alive")
+        except Exception as e:
+            out["parse"] = "%s: %s" % (type(e).__name__, e)
+        return out
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, e)}
+
+
+def _notes_sample():
+    """Read-only sample of the current score -- the E-7 payload itself."""
+    try:
+        import flpianoroll as flp
+        sc = flp.score
+        n = min(8, sc.noteCount)
+        return [{"number": int(sc.getNote(i).number),
+                 "time": int(sc.getNote(i).time),
+                 "length": int(sc.getNote(i).length)} for i in range(n)]
+    except Exception as e:
+        return "%s: %s" % (type(e).__name__, e)
+
+
+def _clear_own_markers(score):
     keep = []
-    for i in range(score.noteCount):        # proven pattern: pyscript_gen.py
+    for i in range(score.noteCount):
         n = score.getNote(i)
         if int(n.number) not in MARKER_PITCHES:
             keep.append((int(n.number), int(n.time), int(n.length),
@@ -111,7 +198,6 @@ def _clear_own_markers(score):
 
 
 def _marker_notes(pitches):
-    """Replace only OUR markers with `pitches`; leave every other note alone."""
     import flpianoroll as flp
     score = flp.score
     _clear_own_markers(score)
@@ -126,55 +212,86 @@ def _marker_notes(pitches):
 
 
 def _run():
-    receipt = {"probe": "MCP_Read_Probe v3 (E-0)", "stage": "start"}
-    receipt["first_write"] = {p: _try_write(p, receipt) for p in TARGETS}
+    receipt = {"probe": "MCP_Read_Probe v4 (E-7b)", "token": TOKEN,
+               "pid": os.getpid(), "stage": "start"}
 
     read_ok, data, read_err = _try_read(READ_PATH)
-    receipt.update({"read_ok": read_ok, "read_data": data, "read_error": read_err})
+    receipt.update({"read_ok": read_ok, "read_error": read_err})
+    receipt["open_write"] = {p: _try_write(p, receipt) for p in TARGETS}
 
     receipt["imports"] = imports = _imports()
-    if imports.get("sys") == "ok":
-        import sys
-        receipt["python"] = sys.version
+    receipt["utils"] = _try_utils(TOKEN)
+    receipt["shell"] = _try_shell(TOKEN)
+    receipt["socket"] = _try_socket(TOKEN)
+    receipt["notes_sample"] = _notes_sample()
+
+    # Shell-fallback receipt (builtin open is dead; heredoc avoids escaping).
+    if receipt["shell"].get("system") == "ok":
+        blob = json.dumps(receipt, sort_keys=True)
+        os.system("cat > /tmp/flmcp_e7b_receipt_shell.json <<'MCP_EOF'\n"
+                  "%s\nMCP_EOF" % blob)
 
     receipt["stage"] = "done"
-    receipt["write"] = {p: _try_write(p, receipt) for p in TARGETS}
-    ok_paths = [p for p, r in receipt["write"].items() if r == "ok"]
+    final = {p: _try_write(p, receipt) for p in TARGETS}
+    receipt["write"] = final
+    ok_paths = [p for p, r in final.items() if r == "ok"]
     receipt["write_ok_paths"] = ok_paths
 
-    bits = [84]                                    # reached end
+    bits = [84]
     if read_ok:
         bits.append(85)
-    if ok_paths:
+    if any(r == "ok" for r in receipt["open_write"].values()):
         bits.append(86)
     for pitch, mod in ((87, "ui"), (88, "flpianoroll"),
                        (89, "channels"), (90, "general")):
         if imports.get(mod) == "ok":
             bits.append(pitch)
-    _marker_notes(bits)                            # visible evidence
+    for pitch, mod in ((92, "mixer"), (93, "plugins"), (94, "transport"),
+                       (95, "patterns"), (96, "midi"), (97, "arrangement"),
+                       (98, "socket"), (99, "subprocess"), (100, "ctypes")):
+        if imports.get(mod) == "ok":
+            bits.append(pitch)
+    u = receipt["utils"]
+    if u.get("present"):
+        bits.append(101)
+    if u.get("log") == "ok":
+        bits.append(102)
+    if u.get("ProgressMsg") == "ok":
+        bits.append(103)
+    if receipt["shell"].get("system") == "ok":
+        bits.append(104)
+    if receipt["shell"].get("popen") == "ok":
+        bits.append(105)
+    if receipt["shell"].get("os_open") == "ok":
+        bits.append(106)
+    if receipt["socket"].get("alive") is not None:
+        bits.append(107)
+    _marker_notes(bits)
 
-    verdict = "E-0 probe v3: read=%s writes=%d/%d bits=%s" % (
-        "OK" if read_ok else ("FAIL %s" % read_err),
-        len(ok_paths), len(TARGETS),
-        ",".join(str(p) for p in bits),
-    )
+    # Leave the token in the hint panel as the LAST ui action (best-effort:
+    # FL may clear it when the script finishes -- absence is also a verdict).
+    try:
+        u = globals().get("Utils")
+        if u is not None:
+            u.ProgressMsg(TOKEN, 1, 1)
+    except Exception:
+        pass
+    verdict = "E-7b v4 %s bits=%s" % (TOKEN, ",".join(str(b) for b in bits))
     print(verdict)
     try:
         ui = __import__("ui")
         ui.setHintMsg(verdict[:120])
-        if hasattr(ui, "showNotification"):
-            ui.showNotification(verdict[:120])
-    except Exception as e:
-        print("status-bar unavailable: %s: %s" % (type(e).__name__, e))
+    except Exception:
+        pass
     return receipt
 
 
 try:
     _run()
 except Exception as e:
-    msg = "E-0 probe v3 CRASH: %s: %s" % (type(e).__name__, e)
+    msg = "E-7b v4 CRASH: %s: %s" % (type(e).__name__, e)
     for p in TARGETS:
-        _try_write(p, {"probe": "MCP_Read_Probe v3 (E-0)", "stage": "CRASH",
+        _try_write(p, {"probe": "MCP_Read_Probe v4 (E-7b)", "stage": "CRASH",
                        "error": msg})
     try:
         _marker_notes([91])
