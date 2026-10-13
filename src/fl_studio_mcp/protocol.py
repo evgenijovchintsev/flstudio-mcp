@@ -31,7 +31,6 @@ import secrets
 import string
 from typing import Tuple
 
-
 # Bump when the wire format changes incompatibly. Server and FL refuse to
 # talk to a mismatched peer.
 PROTOCOL_VERSION = 2
@@ -115,6 +114,12 @@ CMD_PATTERN_LIST = "pattern_list"
 CMD_PATTERN_SELECT = "pattern_select"
 CMD_PATTERN_RENAME = "pattern_rename"
 CMD_PATTERN_GET_LENGTH = "pattern_get_length"
+
+# Channel Rack step grid (E-4)
+CMD_CHANNEL_GET_GRID = "channel_get_grid"        # windowed read, 16 steps/RPC
+CMD_CHANNEL_SET_GRID_BIT = "channel_set_grid_bit"    # one step, value 0..127
+CMD_CHANNEL_SET_GRID_BITS = "channel_set_grid_bits"  # batch + rollback target
+CMD_CHANNEL_CLEAR_GRID = "channel_clear_grid"    # zero a step range
 
 # Plugin params (Phase 1B)
 # (CMD_PLUGIN_LIST_PARAMS "plugin_list_params" was a dead declaration -- never

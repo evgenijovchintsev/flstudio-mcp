@@ -290,7 +290,7 @@ def _h_ping(params):
     return {
         "fl_version": _fl_version,
         "protocol_version": PROTOCOL_VERSION,
-        "build": "e2-patterns-v2",   # reload marker -- bump to verify reloads take
+        "build": "e4-grid-v1",   # reload marker -- bump to verify reloads take
         "ts": time.time(),
     }
 
@@ -1251,6 +1251,112 @@ def _h_arrange_add_marker(p):
         return {"ok": False, "error": "addAutoTimeMarker: %s" % e}
 
 
+# -- Channel Rack step grid (E-4) -------------------------------------------
+
+def _grid_steps_total():
+    """Current pattern length in 16th-note steps (E-4 spec: derive from the
+    pattern / time signature, never hardcode 16). FL beats are quarters,
+    the rack steps are 16ths -> steps = beats * 4; floor 16 for tiny
+    patterns. A fresh FL 26 pattern is 4 bars -> 64 steps."""
+    try:
+        beats = patterns.getPatternLength(patterns.patternNumber())
+    except Exception:
+        beats = 4
+    return max(16, int(round(beats * 4)))
+
+
+def _h_channel_get_grid(p):
+    """Windowed step-grid read (budget: 16 steps per RPC, like api_probe
+    op=step). Steps are 0/1 bits + pVelocity (param 1) best-effort."""
+    ch = int(p.get("channel", 0))
+    total = _grid_steps_total()
+    start = max(0, min(int(p.get("start", 0)), total))
+    count = max(1, min(16, int(p.get("count", 16))))
+    end = min(total, start + count)
+    bits, assigned, vels, vel_err = [], [], [], None
+    for i in range(start, end):
+        bits.append(1 if channels.getGridBit(ch, i) else 0)
+        try:
+            assigned.append(bool(channels.isGridBitAssigned(ch, i)))
+        except Exception:
+            assigned.append(None)
+        try:   # pVelocity = 1 (official step-parameters table)
+            vels.append(int(channels.getCurrentStepParam(ch, i, 1)))
+        except Exception as e:
+            vels.append(None)
+            if vel_err is None:
+                vel_err = f"{type(e).__name__}: {e}"
+    out = {"channel": ch, "steps_total": total, "start": start,
+           "next_start": (end if end < total else None),
+           "grid_bits": bits, "grid_assigned": assigned,
+           "grid_velocities": vels}
+    if vel_err:
+        out["grid_velocity_error"] = vel_err
+    return out
+
+
+def _h_channel_set_grid_bit(p):
+    """One step: value 0 = off; 1..127 = on with that velocity (velocity
+    write is best-effort via setStepParameterByIndex, pVelocity=1; the
+    readback reports what FL actually holds)."""
+    ch = int(p["channel"])
+    step = int(p["step"])
+    value = int(p["value"])
+    total = _grid_steps_total()
+    if not 0 <= step < total:
+        return {"ok": False,
+                "error": f"step {step} out of range 0..{total - 1} "
+                         "(steps_total from the current pattern)"}
+    if not 0 <= value <= 127:
+        return {"ok": False, "error": f"value must be 0..127 (0 = off); got {value}"}
+    channels.setGridBit(ch, step, 1 if value else 0)
+    vel = None
+    if value:
+        try:
+            channels.setStepParameterByIndex(ch, patterns.patternNumber(),
+                                             step, 1, value)
+            vel = int(channels.getCurrentStepParam(ch, step, 1))
+        except Exception as e:
+            vel = f"{type(e).__name__}: {e}"
+    return {"ok": True, "channel": ch, "step": step, "value": value,
+            "bit": 1 if channels.getGridBit(ch, step) else 0,
+            "velocity_readback": vel}
+
+
+def _h_channel_set_grid_bits(p):
+    """Batch of [step, value] pairs in one RPC (used by the batch tool and
+    by rollbacks). Cap 64 pairs to stay inside the server->FL payload."""
+    ch = int(p["channel"])
+    pairs = p.get("bits") or []
+    if len(pairs) > 64:
+        return {"ok": False,
+                "error": f"batch too large: {len(pairs)} pairs (max 64)"}
+    applied, errors = [], []
+    for pair in pairs:
+        r = _h_channel_set_grid_bit({"channel": ch, "step": pair[0],
+                                     "value": pair[1]})
+        (applied if r.get("ok") else errors).append(r)
+    return {"ok": not errors, "channel": ch, "applied": len(applied),
+            "errors": errors[:4]}
+
+
+def _h_channel_clear_grid(p):
+    """Zero a step range (bit off; velocities are left as-is and only
+    matter if the bit is turned on again)."""
+    ch = int(p["channel"])
+    total = _grid_steps_total()
+    start = max(0, min(int(p.get("start", 0)), total))
+    count = max(1, int(p.get("count", 16)))
+    end = min(total, start + count)
+    cleared = 0
+    for i in range(start, end):
+        if channels.getGridBit(ch, i):
+            channels.setGridBit(ch, i, 0)
+            cleared += 1
+    return {"ok": True, "channel": ch, "start": start,
+            "count": end - start, "cleared": cleared}
+
+
 _HANDLERS = {
     "ping": _h_ping,
     "get_tempo": _h_get_tempo,
@@ -1300,4 +1406,8 @@ _HANDLERS = {
     "pattern_select": _h_pattern_select,
     "pattern_rename": _h_pattern_rename,
     "pattern_get_length": _h_pattern_get_length,
+    "channel_get_grid": _h_channel_get_grid,
+    "channel_set_grid_bit": _h_channel_set_grid_bit,
+    "channel_set_grid_bits": _h_channel_set_grid_bits,
+    "channel_clear_grid": _h_channel_clear_grid,
 }

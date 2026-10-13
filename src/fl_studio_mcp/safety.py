@@ -15,15 +15,15 @@ from collections import deque
 from pathlib import Path
 
 from .protocol import (
-    CMD_MIXER_GET_TRACK,
     CMD_CHANNEL_GET,
-    CMD_MIXER_LIST_TRACKS,
+    CMD_CHANNEL_GET_GRID,
     CMD_CHANNEL_LIST,
-    CMD_PLUGIN_GET_PARAM,
     CMD_MIXER_GET_ROUTING,
+    CMD_MIXER_GET_TRACK,
+    CMD_MIXER_LIST_TRACKS,
     CMD_PATTERN_GET_LENGTH,
+    CMD_PLUGIN_GET_PARAM,
 )
-
 
 _DIR = Path.home() / ".flstudio-mcp"
 _PATH = _DIR / "changelog.jsonl"
@@ -98,12 +98,21 @@ def take_snapshot(bridge, scope):
 
     scope: "mixer_track:N" | "channel:N" | "mixer_all" | "channels_all"
            | "plugin_param:TRACK:SLOT:PARAM" | "route:SRC:DST" | "pattern:N"
+           | "channel_grid:N"
     """
     kind, _, arg = str(scope).partition(":")
     if kind == "mixer_track":
         return bridge.call(CMD_MIXER_GET_TRACK, {"index": int(arg)})
     if kind == "channel":
         return bridge.call(CMD_CHANNEL_GET, {"index": int(arg)})
+    if kind == "channel_grid":
+        # Whole 0/1 bit grid of one channel (budget-walked pages). The
+        # rollback basis for set/clear: restore rewrites these bits.
+        from .connection import fetch_all_pages
+        data = fetch_all_pages(bridge, CMD_CHANNEL_GET_GRID, "grid_bits",
+                               {"channel": int(arg)})
+        return {"channel": int(arg), "steps_total": data.get("total"),
+                "grid_bits": data.get("grid_bits") or []}
     if kind == "plugin_param":
         track, slot, idx = (int(x) for x in arg.split(":"))
         return bridge.call(CMD_PLUGIN_GET_PARAM,

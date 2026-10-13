@@ -32,6 +32,7 @@ from .tools import chains as chains_tools
 from .tools import color as color_tools
 from .tools import compose as compose_tools
 from .tools import export as export_tools
+from .tools import grid as grid_tools
 from .tools import mix_doctor as mix_doctor_tools
 from .tools import mixing as mixing_tools
 from .tools import pattern as pattern_tools
@@ -102,6 +103,7 @@ def build_server() -> FastMCP:
     presets_tools.register(mcp)     # Preset suggester: read preset names from disk
     mix_doctor_tools.register(mcp)  # Mix Doctor: diagnose whole mix + gated apply-fixes
     pattern_tools.register(mcp)     # E-2: pattern list/select/rename/get_length
+    grid_tools.register(mcp)        # E-4: Channel Rack step-grid read/draw/clear
     visual_tools.register(mcp)      # E-3: fl_screenshot (agent debugging)
     return mcp
 
