@@ -1,0 +1,30 @@
+"""FL undo tool (E-5): one general.undoUp() step, outside the safety layer.
+
+Decision (E-5 spec option 2, justified in docs/E5_REPORT.md): a snapshot of
+"what the jump will undo" cannot be read, so a safe_write wrapper would
+either lie (restore that does nothing honest) or pollute the rollback
+stack with a no-restore entry that blocks rolling back the previous REAL
+write. Undo therefore joins fl_play / fl_stop / fl_record as a direct
+controller command with an explicit warning instead.
+"""
+from __future__ import annotations
+
+from fastmcp import FastMCP
+
+from .. import protocol
+from ..connection import get_bridge
+
+
+def register(mcp: FastMCP) -> None:
+    @mcp.tool(annotations={
+        "title": "FL Undo (one step, NOT rollback-covered)",
+        "readOnlyHint": False, "destructiveHint": False,
+        "idempotentHint": False, "openWorldHint": True,
+    })
+    def fl_undo() -> dict:
+        """One FL undo step (general.undoUp). WARNING: not covered by
+        fl_rollback_last_change -- undo jumps FL's own history and nothing
+        readable describes what was undone, so no snapshot exists. To
+        reverse an undo, run the original write again (or use FL's redo
+        by hand). Lives outside the safety layer like fl_play/fl_stop."""
+        return get_bridge().call(protocol.CMD_UNDO, {})

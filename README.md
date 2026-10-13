@@ -49,13 +49,16 @@ Full setup is below.
 - **Gain staging** — proposes per-track trims toward a healthy level with proper master headroom.
 - **Reference match** — compares your mix's level and tonal balance against a reference track.
 - **Bulk track control** — solo or mute a whole group (drums, vocals, …) in one step, with a one-call reset.
-- **Track & channel coloring** — color a track, a channel, or a whole group (drums, vocals, …) by color name or hex, reversible like every other change.
+- **Track & channel coloring** — color a track, a channel, or a whole group (drums, vocals, …) by color name or hex, reversible like every other change; read colors back with `fl_get_track_color` / `fl_get_channel_color`.
 
 ### Plugin & preset control
 - Read and set plugin parameters by name, on native and third-party plugins (the parameter list is resolved live).
+- **Preset navigation** — `fl_plugin_preset` reads the current preset (`name_f6`) and steps next/prev. FL's API has no set-preset, so navigation is **not rollback-covered** — every response says so loudly, and the agent navigates back manually if needed.
+- **FL undo** — `fl_undo` jumps FL's own undo history (verified exact on volume writes). It is outside the rollback layer: after an undo, `fl_rollback_last_change` rolls back the write *before* the undo.
 - **Verified writes** — every parameter write is re-read on a fresh tick and retried (0.4 s apart) if FL did not take it; the answer carries `verified` / `attempts` and a `hint`, so a swallowed write is reported instead of echoed back as if it worked.
 - **Batch parameter changes** — `fl_plugin_set_params` sets several knobs of one plugin in a single paced burst and one undo step; `fl_rollback_last_change` puts them all back together.
 - **Chain suggestions** and **preset recommendations** drawn from your actual installed library — read directly from FL's plugin database and preset folders on disk, so recommendations are limited to what you own.
+- **API probe** — `fl_api_probe(module, pattern?)` lists the public names of any FL scripting module (budget-paginated), for spike work without touching the controller.
 
 ### Composition
 - **Multi-track MIDI export** — generate a complete arrangement as a standard MIDI file to import.
@@ -69,7 +72,7 @@ Full setup is below.
 - Tempo and key estimation from an audio file.
 - Melody-to-MIDI transcription (CREPE pitch tracking, with a lighter fallback).
 
-The server exposes 77 tools, plus 6 live resources (project, mixer, transport, channels, patterns, status) that Claude can read directly.
+The server exposes 82 tools, plus 6 live resources (project, mixer, transport, channels, patterns, status) that Claude can read directly.
 
 ## What sets it apart
 

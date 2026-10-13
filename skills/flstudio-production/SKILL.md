@@ -32,6 +32,10 @@ This is the orchestration layer. Deep content lives in `references/`.
 | Change several knobs of one plugin | `fl_plugin_set_params` — one paced burst, ONE undo step; prefer it over repeating the single tool |
 | List / pick / rename patterns | `fl_pattern_list` (paginated), `fl_pattern_select`, `fl_pattern_rename` — select/rename are one rollback step each |
 | How long is a pattern | `fl_pattern_get_length` — beats (FL's native unit) + derived bars/ticks via the project PPQ |
+| Step through a plugin's presets | `fl_plugin_preset(track, slot, op)` — info (read-only) / next / prev; **NO rollback** (FL has no set-preset) — the response warns; navigate back manually |
+| Undo the last FL action | `fl_undo` — exact, but outside the rollback layer: after it, `fl_rollback_last_change` rolls back the write *before* the undo |
+| Read a color | `fl_get_channel_color`, `fl_get_track_color` — `{int, hex, r, g, b}` |
+| Probe the FL scripting API | `fl_api_probe(module, pattern?)` — names of one module, budget-paginated |
 | See FL on screen / debug visually | `fl_screenshot` — PNG path to Read back (see «Debugging with screenshots») |
 
 ### Plugin parameter recipe

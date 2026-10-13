@@ -48,12 +48,13 @@ FLBridge.apply_notes → pyscript_gen.py генерирует MCP_Apply.pyscript
   → FL читает файл заново и применяет ноты
 ```
 
-Текущая карта (77 тулов, 52 RPC-хендлера; счётчики: `grep -c "@mcp.tool"` по
-`src/fl_studio_mcp/tools/`, regex `"([a-z_]+)": _h_` по `_HANDLERS`) — в `README.md`;
-**известные дыры** между слоями: `plugin_preset`, `api_probe`, `channel_get_color`,
-`mixer_get_color` — хендлеры есть, MCP-тула нет; MCP только пишет цвета, читать не умеет.
-Дыры E-2 закрыты (см. `docs/E2_REPORT.md`): `pattern_select`/`pattern_rename`/
-`pattern_get_length` получили хендлеры + тулы, `pattern_list` — туйл; мёртвое объявление
+Текущая карта (82 тула, 53 RPC-хендлера; счётчики: `grep -c "@mcp.tool"` по
+`src/fl_studio_mcp/tools/`, regex `"([a-z_]+)": _h_` по `_HANDLERS`) — в `README.md`.
+Дыры E-2/E-5 закрыты (см. `docs/E2_REPORT.md`, `docs/E5_REPORT.md`): `pattern_*`,
+`plugin_preset`, `api_probe`, `channel_get_color`, `mixer_get_color` — все имеют
+MCP-тулы. `fl_undo` и пресетная навигация сознательно ВНЕ safety-слоя (снапшот
+нечитаем / restore недостоверен) — предупреждения в ответах и докстрингах.
+Мёртвое объявление
 `plugin_list_params` удалено из `protocol.py` (покрыто `plugin_get_params`).
 
 ## 2. Контракты, которые обязан проверять каждый ревьюер
