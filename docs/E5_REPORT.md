@@ -90,6 +90,28 @@ page passthrough (handler already budgets).
       `00` §2.1 (82/53, four holes closed) — ROADMAP does not track
       epics (E-2/E-3/E-4 convention), map lives in `00` + reports
 
+## QA E-5 findings (folded in)
+
+QA verdict: PASS with remarks. Post-QA fixes in this report's follow-up
+commit:
+
+- **B1 — `fl_undo` does not undo `pattern_rename`** (undid=true, name
+  unchanged): FL's `setPatternName` is not in FL's undo stack. Undo
+  coverage varies by action type (volume/param writes undo; several API
+  actions do not). Documented in the `fl_undo` docstring, response
+  warning, README and SKILL — nothing readable can pre-check coverage.
+- **B2 — undo × rollback do not commute**: an undo jump can cancel a
+  rollback (QA reproduced a color coming back after undo). `fl_undo`'s
+  response now carries the explicit non-commutativity warning plus
+  `last_rollback` {tool, scope, age_s} — the newest changelog entry,
+  which the undo may just have cancelled — and the docs demand a fresh
+  state read after every undo.
+- **B3 — preset step swallow**: matches the shipped warning; no change.
+- **B4 — `RGBToColor` quantization** (`#00FF00` → `#14FF14`): noted in
+  both `fl_set_*_color` docstrings — read back with the get tools.
+- **B5 — session client stale tool list**: needs an opencode restart
+  (server process already on `e5-wrappers-v1`); user action.
+
 ## Known limits / follow-ups
 
 - Preset navigation cannot be rolled back via the API (FL limitation);

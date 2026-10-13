@@ -54,7 +54,7 @@ Full setup is below.
 ### Plugin & preset control
 - Read and set plugin parameters by name, on native and third-party plugins (the parameter list is resolved live).
 - **Preset navigation** — `fl_plugin_preset` reads the current preset (`name_f6`) and steps next/prev. FL's API has no set-preset, so navigation is **not rollback-covered** — every response says so loudly, and the agent navigates back manually if needed.
-- **FL undo** — `fl_undo` jumps FL's own undo history (verified exact on volume writes). It is outside the rollback layer: after an undo, `fl_rollback_last_change` rolls back the write *before* the undo.
+- **FL undo** — `fl_undo` jumps FL's own undo history. It is outside the rollback layer and **undo/rollback do not commute**: an undo can cancel a rollback, coverage varies by action type (volume writes undo; `pattern rename` does not), and the response warns + lists the last rollbackable entry. Always re-read state after an undo.
 - **Verified writes** — every parameter write is re-read on a fresh tick and retried (0.4 s apart) if FL did not take it; the answer carries `verified` / `attempts` and a `hint`, so a swallowed write is reported instead of echoed back as if it worked.
 - **Batch parameter changes** — `fl_plugin_set_params` sets several knobs of one plugin in a single paced burst and one undo step; `fl_rollback_last_change` puts them all back together.
 - **Chain suggestions** and **preset recommendations** drawn from your actual installed library — read directly from FL's plugin database and preset folders on disk, so recommendations are limited to what you own.

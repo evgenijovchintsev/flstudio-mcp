@@ -105,7 +105,9 @@ def register(mcp: FastMCP) -> None:
         """Set the color of mixer tracks. Pick targets by category ('drums',
         'bass', ...) or an explicit tracks list; choose a color by name or hex.
         All writes are ONE rollback unit -- fl_rollback_last_change reverts them.
-        (Master is never colored.)"""
+        (Master is never colored.) Note: FL's RGBToColor quantizes some
+        colors (live: pure green '#00FF00' reads back as '#14FF14') --
+        verify with fl_get_track_color."""
         rgb = parse_color(color)
         if rgb is None:
             return {"ok": False, "error": "unknown color %r" % color,
@@ -140,7 +142,9 @@ def register(mcp: FastMCP) -> None:
     ) -> dict:
         """Set the color of channel-rack channels (separate from mixer-track
         color). Target by index or name substring. ONE rollback unit --
-        fl_rollback_last_change reverts it."""
+        fl_rollback_last_change reverts it. Note: FL's RGBToColor quantizes
+        some colors (live: '#00FF00' reads back '#14FF14') -- verify with
+        fl_get_channel_color."""
         rgb = parse_color(color)
         if rgb is None:
             return {"ok": False, "error": "unknown color %r" % color,
