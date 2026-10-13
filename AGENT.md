@@ -103,6 +103,22 @@ Q2, скриншот 17.41.01 на Desktop — вне git по просьбе п
 
 ---
 
+## Паттерны — факты E-2 (подтверждены живьём, FL 26.1.7)
+- **`patterns.getPatternLength(idx)` возвращает БИТЫ, не тики** (доки FL MIDI
+  scripting). Свежий паттерн = 16 бит = 4.0 бара. Конверсия: тики = биты ×
+  `general.getRecPPQ()`; бары = биты / (`getRecPPB()` / `getRecPPQ()`).
+- **Удаления паттернов API нет** — тестовый можно только переименовать в
+  `TMP_*` и удалить руками в FL (Del в паттерн-панели).
+- `jumpToPattern` вне `1..patternCount` FL молча срезает к `patternMax` (999),
+  т.е. выбрал бы несуществующий паттерн — потому валидация двойная:
+  pydantic `ge=1` на туле + guard диапазона в контроллере (`rejected index…`).
+- `pattern_list` каппит имена в 24 символа (`trunc: true`); полное имя —
+  через `fl_pattern_get_length`.
+- Мёртвое объявление `CMD_PLUGIN_LIST_PARAMS` удалено (решение + доказательства —
+  `docs/E2_REPORT.md`); покрыто `fl_plugin_get_params`.
+
+---
+
 ## Запись нот (pyscript-мост)
 1. `channel_select` — выбрать канал Channel Rack.
 2. RPC — **верхнеуровневый `op`**, формат:
