@@ -47,8 +47,9 @@ meanings to relay to the user:
 - **`applied: "unknown"` (always, today)** — E-6 proved there is NO
   programmatic confirmation channel: the pyscript sandbox blocks file I/O
   (no receipt file) and the controller cannot import `flpianoroll` (cannot
-  read the score back). Verify notes visually in the Piano roll. `applied:
-  true/false` arrives with E-7 (`fl_piano_get_notes`).
+  read the score back). E-7 confirmed reading the score is blocked on
+  FL's API entirely (`docs/E7_REPORT.md`) — `applied` stays `"unknown"`
+  until a future FL build. Verify notes visually in the Piano roll.
 - **`triggered: true`** — only means the run-last-script hotkey was sent,
   NOT that notes appeared.
 - **needs-manual** — if notes did not appear: the one-time arm is missing.
