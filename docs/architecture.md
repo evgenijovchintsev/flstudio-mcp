@@ -26,10 +26,14 @@ SystemError: mkdir returned NULL without setting an exception
 The same process (FL Studio itself) writes to those paths fine. The block
 is at the controller-script sandbox layer.
 
-Piano Roll `.pyscript`s run in a different (more permissive) sandbox where
-file I/O does work, but those only execute on user trigger -- you can't run
-a `.pyscript` continuously in the background. The controller script is the
-only "always on" hook FL gives third-party code.
+Piano Roll `.pyscript`s run in a separate sandbox that ONLY exports the
+`flpianoroll` module (+ `os`/`json` for the script itself). As of FL 26.1.7
+(E-0 Q2 probe, 12 Oct 2026: receipt read/write both blocked, verified with a
+pre-created control file), **file I/O there is blocked too** — the earlier
+assumption that this sandbox was more permissive is disproved. Scripts there
+also only execute on user trigger (`ui.runScript` is absent, so nothing can
+run a `.pyscript` from outside). The controller script is the only "always
+on" hook FL gives third-party code.
 
 So the only viable bidirectional channel between an external process and a
 controller script is **MIDI**. SysEx supports arbitrary-length payloads, so

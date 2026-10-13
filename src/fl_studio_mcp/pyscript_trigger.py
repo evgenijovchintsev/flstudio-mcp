@@ -39,8 +39,9 @@ def _trigger_macos(settle=0.35):
 
     pyautogui.FAILSAFE = False
     time.sleep(settle)
-    # E-0 Q3: the auto hotkey can drop modifiers, so verify FL is still the
-    # frontmost app right before sending -- best-effort, not a guarantee.
+    # E-0 Q3: the auto hotkey can drop modifiers and, worse, land in ANOTHER
+    # app if focus was stolen after activate. Verify FL is still frontmost
+    # right before sending; refuse to send to a foreign app.
     try:
         front = subprocess.check_output(
             ["osascript", "-e",
@@ -49,18 +50,38 @@ def _trigger_macos(settle=0.35):
             text=True, timeout=2,
         ).strip()
         focused = "FL Studio" in front
+        check_failed = False
     except Exception:
-        focused = True  # activate succeeded; trust it
+        # Can't verify: send anyway (activate just succeeded) but do NOT
+        # claim focus_ok -- report it as unknown.
+        focused = True
+        check_failed = True
+    if not focused:
+        return {
+            "platform": "macos",
+            "fl_found": True,
+            "focused": False,
+            "focus_ok": False,
+            "sent_hotkey": False,
+            "shortcut": "Cmd+Opt+Y",
+            "method": method,
+            "error": "FL Studio is not frontmost after activate -- hotkey "
+                     "refused (would go to another app).",
+            "hint": "Click the FL Piano roll and press Cmd+Opt+Y manually.",
+        }
     pyautogui.hotkey("command", "option", "y")
-    return {
+    out = {
         "platform": "macos",
         "fl_found": True,
-        "focused": focused,
-        "focus_ok": focused,
+        "focused": True,
         "sent_hotkey": True,
         "shortcut": "Cmd+Opt+Y",
         "method": method,
     }
+    if not check_failed:
+        out["focus_ok"] = True
+    # check_failed: focus_ok omitted -- unverified, honestly not claimed.
+    return out
 
 
 def _windows_api():

@@ -25,8 +25,16 @@ and now means only "the hotkey was sent".
 
 `_trigger_macos` adds:
 - `focus_ok` — frontmost-app check via System Events right before the
-  hotkey (falls back to trusting `activate` if the check itself fails);
+  hotkey. Review fix: if the check explicitly shows FL is NOT frontmost
+  the hotkey is **refused** (`sent_hotkey: false` + error/hint — a
+  Cmd+Opt+Y in a foreign app is worse than none); if the check itself
+  throws, `focus_ok` is omitted (unverified) instead of claiming true;
 - `method` — `"osascript-activate+pyautogui-hotkey"`.
+
+Review fix (blocker 1): `docs/architecture.md` and `docs/CHANGELOG.md`
+(v0.2.0) still claimed the Piano-roll sandbox allows file I/O —
+disproved by E-0 Q2 (FL 26.1.7). Both paragraphs now cite the probe so
+E-7's design reads the current fact.
 
 DoD's "5/5 automatic triggers on macOS": the trigger path itself passed
 **5/5** live (`triggered=true`, `focus_ok=true`, `applied=unknown`). Note
