@@ -23,7 +23,7 @@ This is the orchestration layer. Deep content lives in `references/`.
 |---|---|
 | Tempo, play, stop | `fl_set_tempo`, `fl_play`, `fl_stop`, `fl_toggle_play` |
 | Where are we in the song | `fl_get_song_position` |
-| Drum patterns | `fl_channel_set_grid_bit` (Phase 1) — NOT the Piano Roll |
+| Drum patterns | `fl_channel_get_grid` (read the bit grid), `fl_channel_set_grid_bit` / `_set_grid_bits` (draw steps, velocity 0..127), `fl_channel_clear_grid` — Channel Rack, NOT the Piano Roll |
 | Mixer levels | `fl_mixer_set_volume`, `_set_pan` (Phase 2) |
 | Melody in a raga | `fl_preset_write_raga_melody` (Phase 6) which calls Piano Roll under the hood |
 | Kuthu beat | `fl_preset_write_kuthu_pattern` (Phase 6) |

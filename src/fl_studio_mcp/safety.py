@@ -218,6 +218,13 @@ def safe_write(bridge, *, tool, scope, command, params, build_restore,
     BEFORE the single changelog append, so the log still holds one entry whose
     ``after`` is the true final state. The response then carries
     ``verified: bool`` and ``attempts: int`` (1 = landed first try).
+
+    If the handler answers ``{"ok": False, "error": ...}`` (a controller-side
+    guard rejection -- out-of-range step, name collision, ...), this raises
+    ``ValueError`` and logs NOTHING: the write did not happen, so the tool
+    error must say so instead of wrapping the rejection in ``ok: true``.
+    Successful responses also carry ``echo`` -- the handler's own reply
+    (applied counts, velocity readbacks, ...). (E-4 live-run findings.)
     """
     if _dry_run:
         return {
@@ -228,6 +235,13 @@ def safe_write(bridge, *, tool, scope, command, params, build_restore,
     before = take_snapshot(bridge, scope)
     restore = build_restore(before)
     echo = bridge.call(command, params)
+    # A handler that answers {"ok": False, "error": ...} (guard rejection:
+    # out-of-range step, name collision, ...) did NOT write anything.
+    # Fail loudly before the changelog so the tool error matches reality
+    # instead of wrapping a rejected write in ok:true. (E-4 live-run finding)
+    if isinstance(echo, dict) and echo.get("ok") is False:
+        raise ValueError(
+            f"write rejected by FL: {echo.get('error') or 'unknown error'}")
     echo = _verify_retry(bridge, command, params, echo, verify)
     # FL commits some writes (notably mixer fader volume/pan) on a LATER
     # script-tick, so the handler's SAME-tick readback (echo) can report the
@@ -244,7 +258,7 @@ def safe_write(bridge, *, tool, scope, command, params, build_restore,
         "before": before, "after": after, "echo": echo, "restore": restore,
         "ts": time.time(),
     })
-    out = {"ok": True, "before": before, "after": after}
+    out = {"ok": True, "before": before, "after": after, "echo": echo}
     if verify_value is not None:
         out["verified"] = bool(verified)
         out["attempts"] = attempts
@@ -287,10 +301,18 @@ def safe_write_group(bridge, *, tool, scope, writes, delay=0.0,
         befores.append(before)
         restores.append(w["restore"](before))
     afters, verified_out, attempts_out = [], [], []
+    fail = None
     for i, w in enumerate(writes):
         if i and delay:
             time.sleep(delay)          # between writes -- FL drops back-to-back
         echo = bridge.call(w["command"], w["params"])
+        # Same honesty rule as safe_write: a handler ok:false wrote nothing.
+        # Stop here but STILL log the changelog below -- restores cover every
+        # snapshotted scope, so the writes that DID land stay rollback-able.
+        if isinstance(echo, dict) and echo.get("ok") is False:
+            fail = (f"write {i} rejected by FL: "
+                    f"{echo.get('error') or 'unknown error'}")
+            break
         after, verified, attempts = echo, None, None
         vv = verify_values[i] if (verify_values and i < len(verify_values)) else None
         if vv is not None:
@@ -308,6 +330,9 @@ def safe_write_group(bridge, *, tool, scope, writes, delay=0.0,
         "ts": time.time(),
     }
     _log.append(entry)
+    if fail:
+        raise ValueError(
+            fail + " (earlier writes in this group ARE rollback-able)")
     out = {"ok": True, "before": befores, "after": afters}
     if verify_values is not None:
         out["verified"] = verified_out

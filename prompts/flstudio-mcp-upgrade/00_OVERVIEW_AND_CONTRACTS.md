@@ -48,7 +48,7 @@ FLBridge.apply_notes → pyscript_gen.py генерирует MCP_Apply.pyscript
   → FL читает файл заново и применяет ноты
 ```
 
-Текущая карта (73 тула, 48 RPC-хендлеров; счётчики: `grep -c "@mcp.tool"` по
+Текущая карта (77 тулов, 52 RPC-хендлера; счётчики: `grep -c "@mcp.tool"` по
 `src/fl_studio_mcp/tools/`, regex `"([a-z_]+)": _h_` по `_HANDLERS`) — в `README.md`;
 **известные дыры** между слоями: `plugin_preset`, `api_probe`, `channel_get_color`,
 `mixer_get_color` — хендлеры есть, MCP-тула нет; MCP только пишет цвета, читать не умеет.
