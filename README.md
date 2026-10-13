@@ -84,7 +84,7 @@ These are properties of FL Studio's scripting API, stated plainly:
 
 - **Plugins, audio files, and rendering are UI-only.** FL's API cannot load a plugin, load an audio file, or render audio. The plugin and preset tools therefore *suggest* — you load the chosen plugin or preset, and Claude then configures it. Audio export is done manually (File > Export); Claude can analyze the rendered file afterward.
 - **Only some plugin parameters accept arbitrary values.** Levels and gains do; stepped parameters (filter types, orders, selectors) snap to their own grid steps, so an off-grid request cannot land; some parameters (Fruity Parametric EQ 2's band widths) ignore writes entirely. The parameter tools re-read and retry, then report `verified: false` with a `hint` and the value FL actually holds, instead of echoing the request as if it had landed.
-- **Note writing is armed once per session.** A generated pyscript writes notes into the piano roll; FL exposes no API to run a pyscript, so you run "MCP_Apply" once from the piano roll's scripting menu at the start of a session.
+- **Note writing is armed once per session; application cannot be confirmed.** A generated pyscript writes notes into the piano roll; FL exposes no API to run a pyscript (`ui.runScript` is absent), so you run "MCP_Apply" once from the piano roll's scripting menu at the start of a session. Note results therefore report `applied: "unknown"` honestly: `triggered: true` only means the run-last-script hotkey was sent (proved: the pyscript sandbox blocks file receipts, and the controller cannot import `flpianoroll` — E-0/E-6). Verify the notes visually; `fl_piano_get_notes` (E-7) will close this loop.
 - **Micro-tonal and gamaka-heavy music is approximated.** Scales with intervals smaller than a semitone (e.g. Arabic maqam) are rounded to the nearest semitone, and traditions built on gamaka/ornamentation (e.g. Carnatic) get the *scale framework* — the correct swaras and intervals — not gamaka or micro-tonal rendering. That's a limit of 12-tone MIDI, not of the tools.
 
 ## Requirements
@@ -171,7 +171,7 @@ Linux is not yet supported — contributions welcome.
 
 6. **Arm the note bridge (per session)** — open the piano roll and run **MCP_Apply** once from its scripting menu, so note-writing works.
 
-   On macOS, the note bridge re-triggers the armed script with `Cmd+Opt+Y`.
+   On macOS, the note bridge re-triggers the armed script with `Cmd+Opt+Y`. Note-write results carry `triggered` (hotkey sent) and `applied: "unknown"` (no confirmation channel exists yet) — always check the piano roll if it matters.
    Grant Accessibility permission to the app running the MCP server or daemon,
    for example Terminal, iTerm, Claude Desktop, or Cursor:
    **System Settings > Privacy & Security > Accessibility**.

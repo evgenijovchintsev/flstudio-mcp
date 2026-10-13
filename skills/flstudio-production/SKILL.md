@@ -38,6 +38,24 @@ This is the orchestration layer. Deep content lives in `references/`.
 | Probe the FL scripting API | `fl_api_probe(module, pattern?)` — names of one module, budget-paginated |
 | See FL on screen / debug visually | `fl_screenshot` — PNG path to Read back (see «Debugging with screenshots») |
 
+### Note bridge (writing notes into the Piano roll)
+
+Writing notes uses a generated `.pyscript` + FL's "Run last script again"
+hotkey — there is no FL API to run a script (`ui.runScript` is absent). Status
+meanings to relay to the user:
+
+- **`applied: "unknown"` (always, today)** — E-6 proved there is NO
+  programmatic confirmation channel: the pyscript sandbox blocks file I/O
+  (no receipt file) and the controller cannot import `flpianoroll` (cannot
+  read the score back). Verify notes visually in the Piano roll. `applied:
+  true/false` arrives with E-7 (`fl_piano_get_notes`).
+- **`triggered: true`** — only means the run-last-script hotkey was sent,
+  NOT that notes appeared.
+- **needs-manual** — if notes did not appear: the one-time arm is missing.
+  Recipe: open the Piano roll → Tools → Scripts → **MCP Apply** (run once
+  this FL session; after that `Cmd+Opt+Y` / `Ctrl+Alt+Y` re-runs it). Check
+  `focus_ok`/`method` in the trigger result when debugging macOS focus.
+
 ### Plugin parameter recipe
 
 Trust `verified`, not the request. Measured on FL 26 with Fruity Parametric

@@ -51,6 +51,12 @@ def register(mcp: FastMCP) -> None:
         quantize (grid in bars) to snap note starts to a grid before writing.
         Setup: open the Piano roll and run 'MCP_Apply' once from its Scripting
         menu (so Run last script again targets it). mode='replace' clears first.
+
+        Status meanings (E-6): 'triggered' = the run-last-script hotkey was
+        sent (NOT proof notes appeared); 'applied' is always "unknown" today --
+        the pyscript sandbox blocks file receipts and the controller cannot
+        import flpianoroll (both proved E-0/E-6), so verify visually in the
+        Piano roll. See the 'setup' field for the one-time manual arm.
         """
         arr = [n.model_dump() for n in notes]
         if quantize and quantize > 0:

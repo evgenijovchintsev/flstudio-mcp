@@ -15,6 +15,7 @@ import time
 
 def _trigger_macos(settle=0.35):
     """Focus FL Studio on macOS and send Cmd+Opt+Y."""
+    method = "osascript-activate+pyautogui-hotkey"
     try:
         subprocess.check_call(
             ["osascript", "-e", 'tell application "FL Studio" to activate'],
@@ -27,8 +28,10 @@ def _trigger_macos(settle=0.35):
             "platform": "macos",
             "fl_found": False,
             "focused": False,
+            "focus_ok": False,
             "sent_hotkey": False,
             "shortcut": "Cmd+Opt+Y",
+            "method": method,
             "error": f"{type(e).__name__}: {e}",
         }
 
@@ -36,13 +39,27 @@ def _trigger_macos(settle=0.35):
 
     pyautogui.FAILSAFE = False
     time.sleep(settle)
+    # E-0 Q3: the auto hotkey can drop modifiers, so verify FL is still the
+    # frontmost app right before sending -- best-effort, not a guarantee.
+    try:
+        front = subprocess.check_output(
+            ["osascript", "-e",
+             'tell application "System Events" to get name of '
+             "first application process whose frontmost is true"],
+            text=True, timeout=2,
+        ).strip()
+        focused = "FL Studio" in front
+    except Exception:
+        focused = True  # activate succeeded; trust it
     pyautogui.hotkey("command", "option", "y")
     return {
         "platform": "macos",
         "fl_found": True,
         "focused": focused,
+        "focus_ok": focused,
         "sent_hotkey": True,
         "shortcut": "Cmd+Opt+Y",
+        "method": method,
     }
 
 
