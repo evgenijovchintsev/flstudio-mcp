@@ -11,7 +11,7 @@ fl_group_tracks / fl_apply_eq_intent tools (reuse, not re-implement).
 from __future__ import annotations
 
 import math
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -81,9 +81,14 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "Apply a Mix Doctor fix (gated)", **_WR})
     def fl_apply_mix_fix(
-        kind: Annotated[str, Field(description="Fix kind. Currently 'trim_volume' (the proven, safe one).")],
-        track: Annotated[Optional[int], Field(ge=0, description="Mixer track index (for trim_volume).")] = None,
-        target_db: Annotated[Optional[float], Field(description="Absolute target fader level in dB, e.g. -3.0.")] = None,
+        kind: Annotated[str, Field(
+            description="Fix kind. Currently 'trim_volume' (the proven, safe one).")],
+        track: Annotated[int | None, Field(
+            ge=0, description="Mixer track index (for trim_volume).",
+        )] = None,
+        target_db: Annotated[float | None, Field(
+            description="Absolute target fader level in dB, e.g. -3.0.",
+        )] = None,
     ) -> dict:
         """Apply ONE Mix Doctor fix via the safety layer: snapshot -> write ->
         FRESH readback -> rollback-able with fl_rollback_last_change.
@@ -131,7 +136,8 @@ def register(mcp: FastMCP) -> None:
         runs -- then stop for full-song-accurate level diagnosis. Read-only."""
         try:
             bridge = get_bridge()
-            tracks = fetch_all_pages(bridge, protocol.CMD_MIXER_LIST_TRACKS, "tracks").get("tracks", [])
+            tracks = fetch_all_pages(
+                bridge, protocol.CMD_MIXER_LIST_TRACKS, "tracks").get("tracks", [])
             indices = [t.get("i", t.get("index")) for t in tracks]
             r = md.get_watcher().start(bridge, indices, interval_ms=interval_ms)
             if not r.get("ok"):
@@ -183,7 +189,8 @@ def register(mcp: FastMCP) -> None:
             if not (wmax or snap.get("levels_valid")):
                 return {"ok": True, "needs_levels": True,
                         "guidance": "No level data -- press PLAY (or run watch mode: "
-                                    "fl_mix_watch_start -> play -> fl_mix_watch_stop) then call again."}
+                                    "fl_mix_watch_start -> play -> fl_mix_watch_stop)"
+                                    " then call again."}
             plan = md.gain_stage_plan(snap)
         except Exception as e:
             return {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
@@ -193,7 +200,8 @@ def register(mcp: FastMCP) -> None:
                       "alternative": p.get("alternative", False),
                       "human": p["human"], "reason": p["reason"]} for p in plan["plans"]]
         return {"ok": True,
-                "peak_source": "watch (full-song)" if wmax else snap.get("peak_window", {}).get("source"),
+                "peak_source": ("watch (full-song)" if wmax
+                                else snap.get("peak_window", {}).get("source")),
                 "aim_db": plan["target_db"], "healthy_band_db": plan["band"],
                 "proposals": proposals, "notes": plan["notes"],
                 "guidance": "Apply approved trims: fl_apply_mix_fix(kind='trim_volume', track, "
@@ -203,7 +211,8 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "Reference match (level/balance)", **_RO})
     def fl_reference_match(
-        reference_audio_path: Annotated[str, Field(description="Path to a reference WAV/MP3 to compare against.")],
+        reference_audio_path: Annotated[str, Field(
+            description="Path to a reference WAV/MP3 to compare against.")],
     ) -> dict:
         """Compare your mix's LEVEL + rough tonal BALANCE to a reference track.
         READ-ONLY. Analyzes the reference FILE (overall level + low/mid/high
@@ -238,11 +247,15 @@ def register(mcp: FastMCP) -> None:
                            "rough_db": round(10 * math.log10((m or 0.01) / (r or 0.01)), 1)}
         return {"ok": True, "reference": ref,
                 "your_mix_balance": bal, "your_mix_peak_db": mix_peak,
-                "peak_source": "watch (full-song)" if wmax else snap.get("peak_window", {}).get("source"),
+                "peak_source": ("watch (full-song)" if wmax
+                                else snap.get("peak_window", {}).get("source")),
                 "level_delta_db": level_delta, "band_comparison": band_cmp,
-                "honest": "Level + ROUGH name-based balance only. Your-mix balance is estimated from "
+                "honest": "Level + ROUGH name-based balance only."
+                          " Your-mix balance is estimated from "
                           "track names + peaks, NOT FL's output spectrum. Reference bands are real "
                           "(file analysis). +level_delta = your mix hotter; +band delta_pct = your "
                           "mix has more energy in that band than the reference.",
-                "guidance": "Nudge via fl_apply_eq_intent (balance) / fl_apply_mix_fix (level): e.g. "
-                            "positive low delta -> high-pass/trim lows; negative high delta -> add_air."}
+                "guidance": "Nudge via fl_apply_eq_intent (balance)"
+                            " / fl_apply_mix_fix (level): e.g. "
+                            "positive low delta -> high-pass/trim lows;"
+                            " negative high delta -> add_air."}

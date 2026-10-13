@@ -49,6 +49,7 @@ Full setup is below.
 - **Gain staging** — proposes per-track trims toward a healthy level with proper master headroom.
 - **Reference match** — compares your mix's level and tonal balance against a reference track.
 - **Bulk track control** — solo or mute a whole group (drums, vocals, …) in one step, with a one-call reset.
+- **Screenshots** — `fl_screenshot` captures FL's screen so the agent can see plugin windows, the hint bar, or piano-roll notes for itself (macOS `screencapture`, no focus stealing).
 - **Track & channel coloring** — color a track, a channel, or a whole group (drums, vocals, …) by color name or hex, reversible like every other change; read colors back with `fl_get_track_color` / `fl_get_channel_color`.
 
 ### Plugin & preset control
@@ -63,8 +64,8 @@ Full setup is below.
 ### Composition
 - **Multi-track MIDI export** — generate a complete arrangement as a standard MIDI file to import.
 - **Multi-pattern arrangement** — create, name, clone, and mark sections.
-- **Pattern control** — list (paginated), select, rename, and read the length (beats/bars via the project PPQ) of any pattern; select and rename are single reversible steps with their own rollback.
-- **Channel Rack step-grid drawing** — read and write the step sequencer as bit grids (`fl_channel_get_grid`, `fl_channel_set_grid_bit` / `_set_grid_bits` with per-step velocity 0..127, `fl_channel_clear_grid`); windowed reads, one rollback step per write.
+- **Pattern control** — `fl_pattern_list` (paginated), `fl_pattern_select`, `fl_pattern_rename`, and `fl_pattern_get_length` (beats/bars via the project PPQ); select and rename are single reversible steps with their own rollback.
+- **Channel Rack step-grid drawing** — read and write the step sequencer as bit grids (`fl_channel_get_grid`, `fl_channel_set_grid_bit` / `fl_channel_set_grid_bits` with per-step velocity 0..127, `fl_channel_clear_grid`); windowed reads, one rollback step per write.
 - **Note and chord writing** into the piano roll, with quantize to a grid (for new notes and existing ones).
 - **Composition in any scale or mode** — Western modes, pentatonic, ragas, maqam, and beyond — through the scale composer, where Claude supplies the notes for the requested scale.
 
@@ -84,7 +85,7 @@ These are properties of FL Studio's scripting API, stated plainly:
 
 - **Plugins, audio files, and rendering are UI-only.** FL's API cannot load a plugin, load an audio file, or render audio. The plugin and preset tools therefore *suggest* — you load the chosen plugin or preset, and Claude then configures it. Audio export is done manually (File > Export); Claude can analyze the rendered file afterward.
 - **Only some plugin parameters accept arbitrary values.** Levels and gains do; stepped parameters (filter types, orders, selectors) snap to their own grid steps, so an off-grid request cannot land; some parameters (Fruity Parametric EQ 2's band widths) ignore writes entirely. The parameter tools re-read and retry, then report `verified: false` with a `hint` and the value FL actually holds, instead of echoing the request as if it had landed.
-- **Note writing is armed once per session; application cannot be confirmed.** A generated pyscript writes notes into the piano roll; FL exposes no API to run a pyscript (`ui.runScript` is absent), so you run "MCP_Apply" once from the piano roll's scripting menu at the start of a session. Note results therefore report `applied: "unknown"` honestly: `triggered: true` only means the run-last-script hotkey was sent (proved: the pyscript sandbox blocks file receipts, and the controller cannot import `flpianoroll` — E-0/E-6). Verify the notes visually. Reading the score back is **blocked on FL's API** (E-7 proved both channels dead — see `docs/E7_REPORT.md`), so `applied` stays `"unknown"` until a future FL build exposes a channel.
+- **Note writing is armed once per session; application cannot be confirmed.** A generated pyscript writes notes into the piano roll; FL exposes no API to run a pyscript (`ui.runScript` is absent), so you run "MCP_Apply" once from the piano roll's scripting menu at the start of a session. Note results therefore report `applied: "unknown"` honestly: `triggered: true` only means the run-last-script hotkey was sent (proved: the pyscript sandbox blocks file receipts, and the controller cannot import `flpianoroll` — E-0/E-6). Verify the notes visually (`fl_screenshot` on the piano roll works well for this). Reading the score back is **blocked on FL's API** (E-7 proved both channels dead — see `docs/E7_REPORT.md`), so `applied` stays `"unknown"` until a future FL build exposes a channel.
 - **Micro-tonal and gamaka-heavy music is approximated.** Scales with intervals smaller than a semitone (e.g. Arabic maqam) are rounded to the nearest semitone, and traditions built on gamaka/ornamentation (e.g. Carnatic) get the *scale framework* — the correct swaras and intervals — not gamaka or micro-tonal rendering. That's a limit of 12-tone MIDI, not of the tools.
 
 ## Requirements

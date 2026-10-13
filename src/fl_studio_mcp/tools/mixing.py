@@ -41,7 +41,8 @@ INTENTS = {
     "add_air":          {"type": "high_shelf", "freq_hz": 12000, "max_db": +6.0, "width_pct": None},
     "remove_harshness": {"type": "peaking",    "freq_hz": 3000,  "max_db": -6.0, "width_pct": 30},
     "add_presence":     {"type": "peaking",    "freq_hz": 5000,  "max_db": +5.0, "width_pct": None},
-    "high_pass":        {"type": "high_pass",  "freq_range": (40, 120), "max_db": None, "width_pct": None},
+    "high_pass": {"type": "high_pass", "freq_range": (40, 120),
+                  "max_db": None, "width_pct": None},
 }
 _DEFAULT_WIDTH_PCT = 50.0
 
@@ -139,13 +140,15 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"title": "Apply an EQ mixing intent", **_WR})
     def fl_apply_eq_intent(
         track: Annotated[int, Field(ge=0, description="Mixer track index.")],
-        slot: Annotated[int, Field(ge=0, le=9, description="Effect slot of a Fruity Parametric EQ 2.")],
+        slot: Annotated[int, Field(
+            ge=0, le=9, description="Effect slot of a Fruity Parametric EQ 2.")],
         intent: Annotated[
             Literal["remove_mud", "add_air", "remove_harshness", "add_presence", "high_pass"],
             Field(description="Which EQ move to apply."),
         ],
         intensity: Annotated[float, Field(ge=0.0, le=1.0,
-                             description="0..1; scales gain (gain=max*intensity). Default 0.5.")] = 0.5,
+                             description="0..1; scales gain (gain=max*intensity)."
+                             " Default 0.5.")] = 0.5,
     ) -> dict:
         """Apply a musical EQ move on a Fruity Parametric EQ 2 using a free band.
         Sets type/freq/gain/width as one undo-able group; returns the band used
@@ -185,7 +188,8 @@ def register(mcp: FastMCP) -> None:
             _param_write(track, slot, eq2_band_param_index(free, "type"), TYPE_NORMS[spec["type"]]),
             _param_write(track, slot, eq2_band_param_index(free, "freq"), freq_to_norm(freq_hz)),
             _param_write(track, slot, eq2_band_param_index(free, "level"), db_to_norm(gain_db)),
-            _param_write(track, slot, eq2_band_param_index(free, "width"), width_to_norm(width_pct)),
+            _param_write(track, slot, eq2_band_param_index(free, "width"),
+                         width_to_norm(width_pct)),
         ]
         res = safety.safe_write_group(
             bridge, tool="apply_eq_intent",
@@ -239,26 +243,36 @@ def register(mcp: FastMCP) -> None:
             writes.append(_param_write(track, slot, P[name]["i"], target_norm))
 
         if intent == "more_space":
-            d = _lerp(1.5, 6.0, intensity); add("Decay time", rd.decay_to_norm(d))
-            w = min(125.0, rd.norm_to_wet(P["Wet level"]["v"]) + 15.0); add("Wet level", rd.wet_to_norm(w))
+            d = _lerp(1.5, 6.0, intensity)
+            add("Decay time", rd.decay_to_norm(d))
+            w = min(125.0, rd.norm_to_wet(P["Wet level"]["v"]) + 15.0)
+            add("Wet level", rd.wet_to_norm(w))
             setp = {"decay_s": round(d, 2), "wet_pct": round(w)}
         elif intent == "tighten_reverb":
-            d = _lerp(1.5, 0.6, intensity); add("Decay time", rd.decay_to_norm(d))
-            w = max(0.0, rd.norm_to_wet(P["Wet level"]["v"]) - 10.0); add("Wet level", rd.wet_to_norm(w))
+            d = _lerp(1.5, 0.6, intensity)
+            add("Decay time", rd.decay_to_norm(d))
+            w = max(0.0, rd.norm_to_wet(P["Wet level"]["v"]) - 10.0)
+            add("Wet level", rd.wet_to_norm(w))
             setp = {"decay_s": round(d, 2), "wet_pct": round(w)}
         elif intent == "darker_reverb":
             # move the high-cut DOWN toward a dark ~2 kHz floor (works whether it
             # starts at Off or already partway down).
-            new = _lerp(P["High cut"]["v"], rd.highcut_to_norm(2000.0), intensity); add("High cut", new)
-            hz = rd.norm_to_highcut_hz(new); setp = {"high_cut": "Off" if hz is None else round(hz)}
+            new = _lerp(P["High cut"]["v"], rd.highcut_to_norm(2000.0), intensity)
+            add("High cut", new)
+            hz = rd.norm_to_highcut_hz(new)
+            setp = {"high_cut": "Off" if hz is None else round(hz)}
         elif intent == "brighter_reverb":
-            new = _lerp(P["High cut"]["v"], rd.HIGHCUT_OFF_NORM, intensity); add("High cut", new)
-            hz = rd.norm_to_highcut_hz(new); setp = {"high_cut": "Off" if hz is None else round(hz)}
+            new = _lerp(P["High cut"]["v"], rd.HIGHCUT_OFF_NORM, intensity)
+            add("High cut", new)
+            hz = rd.norm_to_highcut_hz(new)
+            setp = {"high_cut": "Off" if hz is None else round(hz)}
         elif intent == "more_reverb":
-            w = min(125.0, rd.norm_to_wet(P["Wet level"]["v"]) + 30.0 * intensity); add("Wet level", rd.wet_to_norm(w))
+            w = min(125.0, rd.norm_to_wet(P["Wet level"]["v"]) + 30.0 * intensity)
+            add("Wet level", rd.wet_to_norm(w))
             setp = {"wet_pct": round(w)}
         elif intent == "less_reverb":
-            w = max(0.0, rd.norm_to_wet(P["Wet level"]["v"]) - 30.0 * intensity); add("Wet level", rd.wet_to_norm(w))
+            w = max(0.0, rd.norm_to_wet(P["Wet level"]["v"]) - 30.0 * intensity)
+            add("Wet level", rd.wet_to_norm(w))
             setp = {"wet_pct": round(w)}
 
         res = safety.safe_write_group(bridge, tool="apply_reverb_intent",
@@ -343,7 +357,8 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"title": "Apply a compression intent", **_WR})
     def fl_apply_compression_intent(
         track: Annotated[int, Field(ge=0)],
-        slot: Annotated[int, Field(ge=0, le=9, description="Slot of a Fruity Limiter OR FabFilter Pro-C.")],
+        slot: Annotated[int, Field(
+            ge=0, le=9, description="Slot of a Fruity Limiter OR FabFilter Pro-C.")],
         intent: Annotated[
             Literal["heavy_vocal_compression", "gentle_compression", "glue_drums", "punch"],
             Field(description="Which compression move."),

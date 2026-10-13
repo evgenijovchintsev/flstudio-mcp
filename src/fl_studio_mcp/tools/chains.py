@@ -53,7 +53,8 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"title": "Set up a genre chain (plan)", **_RO})
     def fl_setup_chain(
         track: Annotated[int, Field(ge=0, description="Mixer track index.")],
-        chain_type: Annotated[str, Field(description="Recipe: 'vocal', 'drum_bus', 'bass', 'master'.")],
+        chain_type: Annotated[str, Field(
+            description="Recipe: 'vocal', 'drum_bus', 'bass', 'master'.")],
     ) -> dict:
         """Plan a genre-appropriate processing chain over a track's EXISTING
         plugins. READ-ONLY plan: returns the ordered intent calls (each with the

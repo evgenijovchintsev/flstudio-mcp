@@ -29,7 +29,6 @@ import os
 import platform
 import secrets
 import string
-from typing import Tuple
 
 # Bump when the wire format changes incompatibly. Server and FL refuse to
 # talk to a mismatched peer.
@@ -216,7 +215,7 @@ def encode_message(direction: int, request_id: str, payload: dict) -> bytes:
     return bytes(out)
 
 
-def decode_message(data) -> Tuple[int, str, dict] | None:
+def decode_message(data) -> tuple[int, str, dict] | None:
     """Decode a SysEx payload. Returns None if not one of ours.
 
     ``data`` is the bytes between F0 and F7 (mido strips the framing).

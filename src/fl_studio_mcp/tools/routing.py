@@ -12,7 +12,7 @@ everything in a single OnSysEx tick (which stalls FL).
 """
 from __future__ import annotations
 
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -172,9 +172,11 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "Group tracks into a bus", **_WR})
     def fl_group_tracks(
-        sources: Annotated[List[int], Field(description="Source mixer tracks to route into the bus.")],
+        sources: Annotated[list[int], Field(
+            description="Source mixer tracks to route into the bus.")],
         bus: Annotated[int, Field(ge=1, description="Destination bus mixer track (not Master).")],
-        name: Annotated[Optional[str], Field(description="Optional new name for the bus track.")] = None,
+        name: Annotated[str | None, Field(
+            description="Optional new name for the bus track.")] = None,
     ) -> dict:
         """Group sources into a bus, EXCLUSIVELY: each source -> bus ON and its
         direct -> Master OFF; bus -> Master ON; optional bus rename. Applied as

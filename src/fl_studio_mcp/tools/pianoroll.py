@@ -9,7 +9,7 @@ menu so that 'Run last script again' targets it.
 
 from __future__ import annotations
 
-from typing import Annotated, List
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -37,12 +37,13 @@ def register(mcp: FastMCP) -> None:
         "openWorldHint": True,
     })
     def fl_write_piano_roll_notes(
-        notes: List[PianoRollNote],
+        notes: list[PianoRollNote],
         mode: Annotated[str, Field(
             description="'replace' clears the pattern first; 'append' adds to it.",
         )] = "replace",
         quantize: Annotated[float, Field(
-            description="Optional grid (bars) to snap note starts to before writing: 0.0625=1/16, 0.125=1/8, 0=off.",
+            description="Optional grid (bars) to snap note starts to before writing:"
+                       " 0.0625=1/16, 0.125=1/8, 0=off.",
         )] = 0.0,
     ) -> dict:
         """Write notes into the currently-open FL Piano roll.
@@ -69,11 +70,15 @@ def register(mcp: FastMCP) -> None:
         "idempotentHint": False, "openWorldHint": True,
     })
     def fl_quantize_pattern(
-        grid_bars: Annotated[float, Field(gt=0, description="Snap grid in bars: 0.0625=1/16, 0.125=1/8, 0.25=1/4.")] = 0.0625,
-        snap_ends: Annotated[bool, Field(description="Also snap note lengths to the grid.")] = False,
+        grid_bars: Annotated[float, Field(
+            gt=0, description="Snap grid in bars: 0.0625=1/16, 0.125=1/8, 0.25=1/4.",
+        )] = 0.0625,
+        snap_ends: Annotated[bool, Field(
+            description="Also snap note lengths to the grid.")] = False,
     ) -> dict:
         """Quantize the notes ALREADY in the open Piano roll: reads the score,
         snaps note starts (and optionally lengths) to the grid, rewrites -- via
         the pyscript bridge, no dialog. Needs the Piano roll open + MCP_Apply
         armed once this session (same setup as note writing)."""
-        return get_bridge().apply_notes([], trigger=True, quantize=float(grid_bars), snap_ends=snap_ends)
+        return get_bridge().apply_notes([], trigger=True,
+                                        quantize=float(grid_bars), snap_ends=snap_ends)

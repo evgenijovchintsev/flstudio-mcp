@@ -1,0 +1,65 @@
+{
+  "description": "Agent eval scenarios for flstudio-mcp: a user request -> the tool(s) a competent agent should reach for. Used to catch tool-discovery regressions; not an accuracy benchmark.",
+  "scenarios": [
+    {
+      "id": "batch-eq",
+      "prompt": "Set the gain and frequency of band 2 on the EQ in slot 0 of track 3 in one undo step",
+      "expected_tools": ["fl_plugin_set_params"],
+      "notes": "Batch of 2+ params on ONE plugin = fl_plugin_set_params, not repeated fl_plugin_set_param."
+    },
+    {
+      "id": "rollback-last",
+      "prompt": "What did you just change? Undo it.",
+      "expected_tools": ["fl_rollback_last_change"],
+      "notes": "The safety layer's rollback; fl_undo is FL's own undo history, different stack."
+    },
+    {
+      "id": "fix-hot-track",
+      "prompt": "Which tracks are too hot and fix them",
+      "expected_tools": ["fl_diagnose_mix", "fl_gain_stage", "fl_apply_mix_fix"],
+      "notes": "Diagnose -> propose -> apply one approved fix (trim_volume)."
+    },
+    {
+      "id": "glue-drums",
+      "prompt": "Glue-compress my drum bus",
+      "expected_tools": ["fl_apply_compression_intent"],
+      "notes": "intent=glue_drums on the drum bus track's limiter/pro-c slot."
+    },
+    {
+      "id": "remove-mud",
+      "prompt": "This vocal sounds muddy, fix it",
+      "expected_tools": ["fl_apply_eq_intent", "fl_apply_compression_intent"],
+      "notes": "remove_mud EQ move + gentle/heavy vocal compression on the vocal track."
+    },
+    {
+      "id": "write-raga",
+      "prompt": "Write a Hamsadhwani melody in C on the selected channel",
+      "expected_tools": ["fl_write_raga_melody"],
+      "notes": "Raga swaras generated server-side; needs MCP_Apply armed once per session."
+    },
+    {
+      "id": "kuthu-pattern",
+      "prompt": "Program a kuthu rhythm pattern",
+      "expected_tools": ["fl_channel_set_grid_bits"],
+      "notes": "Kuthu/gaana is a Channel Rack step pattern (with velocities), not a Piano Roll melody."
+    },
+    {
+      "id": "step-grid",
+      "prompt": "Show me the step grid of channel 2 and light steps 4-7",
+      "expected_tools": ["fl_channel_get_grid", "fl_channel_set_grid_bits"],
+      "notes": "Read windowed, then one batched write (one rollback unit)."
+    },
+    {
+      "id": "preset-nav",
+      "prompt": "Browse presets on the Serum in slot 2",
+      "expected_tools": ["fl_plugin_preset", "fl_list_presets"],
+      "notes": "next/prev are best-effort (no setPreset in FL 26); list reads the library from disk."
+    },
+    {
+      "id": "probe-api",
+      "prompt": "What functions does the FL patterns module expose?",
+      "expected_tools": ["fl_api_probe"],
+      "notes": "module=patterns, optional name pattern filter; paginated."
+    }
+  ]
+}

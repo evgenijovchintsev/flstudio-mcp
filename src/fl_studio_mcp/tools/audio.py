@@ -10,7 +10,7 @@ often confuses relative major/minor -- always labelled 'estimated'.
 from __future__ import annotations
 
 import os
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -38,8 +38,8 @@ def estimate_key(chroma_mean):
 
 def audio_analyze(path):
     """Tempo (beat_track), estimated key, duration, beat/onset counts."""
-    import numpy as np
     import librosa
+    import numpy as np
     y, sr = librosa.load(path, mono=True)          # WAV direct; MP3 via ffmpeg
     duration = float(librosa.get_duration(y=y, sr=sr))
     tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
@@ -62,8 +62,8 @@ def audio_analyze(path):
 def analyze_bands(path):
     """Reference-track tonal profile: overall level (rms/peak dBFS) + low/mid/high
     spectral-band energy SHARES (%). Offline; reuses librosa (cheap STFT)."""
-    import numpy as np
     import librosa
+    import numpy as np
     y, sr = librosa.load(path, mono=True)
     if not y.size:
         return {"path": str(path), "error": "empty audio"}
@@ -117,8 +117,8 @@ def resolve_pitch_engine(engine=None) -> str:
 
 def _pitch_pyin(y, sr, fmin, fmax):
     """librosa pyin -> (f0 [NaN where unvoiced], conf, times); conf = voiced prob."""
-    import numpy as np
     import librosa
+    import numpy as np
     f0, _voiced, vprob = librosa.pyin(y, fmin=fmin, fmax=fmax, sr=sr)
     times = librosa.times_like(f0, sr=sr)
     return f0, np.nan_to_num(vprob, nan=0.0), times
@@ -129,8 +129,8 @@ def _pitch_crepe(y, sr, fmin, fmax, voiced_floor=0.3, hop_sec=0.01):
 
     CREPE emits a pitch every frame; we NaN-out sub-floor frames so the shared
     segmenter treats them as silence -- same contract as pyin's f0."""
-    import numpy as np
     import librosa
+    import numpy as np
     import torch
     import torchcrepe
     target_sr = 16000                              # CREPE is trained at 16 kHz
@@ -151,8 +151,8 @@ def _pitch_crepe(y, sr, fmin, fmax, voiced_floor=0.3, hop_sec=0.01):
 def _segment_notes(f0, conf, times, min_note_sec):
     """Group consecutive same-rounded-pitch voiced (non-NaN) frames into
     (midi, start_sec, dur_sec, mean_conf) tuples. Engine-agnostic."""
-    import numpy as np
     import librosa
+    import numpy as np
     midi = librosa.hz_to_midi(f0)
     raw, cur, start, probs = [], None, None, []
 
@@ -201,8 +201,8 @@ def audio_extract_melody(path, bpm=None, quantize=1 / 16.0, min_note_sec=0.06,
     (kept = voiced_prob >= min_conf). bridge_notes holds ONLY kept notes, so a
     caller can write the confident set while still seeing/keeping low-conf ones.
     """
-    import numpy as np
     import librosa
+    import numpy as np
     y, sr = librosa.load(path, mono=True)
     fmin = float(librosa.note_to_hz(fmin_note))
     fmax = float(librosa.note_to_hz(fmax_note))
@@ -239,7 +239,8 @@ def audio_extract_melody(path, bpm=None, quantize=1 / 16.0, min_note_sec=0.06,
             bridge.append({"pitch": pitch, "time_bars": q(st / barlen),
                            "length_bars": max(q(dur / barlen), quantize), "velocity": 0.787})
     kept_notes = [n for n in notes if n["kept"]]
-    conf_mean = round(float(np.mean([n["voiced_prob"] for n in kept_notes])), 3) if kept_notes else 0.0
+    conf_mean = (round(float(np.mean([n["voiced_prob"] for n in kept_notes])), 3)
+                 if kept_notes else 0.0)
     return {"path": str(path), "engine": eng, "bpm_used": round(bpm, 1),
             "note_count": len(notes), "kept_count": kept, "confidence": conf_mean,
             "filters": {"fmin": fmin_note, "fmax": fmax_note, "min_conf": min_conf,
@@ -254,7 +255,8 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "Analyze audio (tempo/key)", **_RO})
     def fl_analyze_audio(
-        path: Annotated[str, Field(description="Path to a WAV/MP3 file (MP3 needs ffmpeg on PATH).")],
+        path: Annotated[str, Field(
+            description="Path to a WAV/MP3 file (MP3 needs ffmpeg on PATH).")],
     ) -> dict:
         """Estimate tempo + key (+ duration, beats, onsets) of an audio file.
         Pure offline analysis -- does NOT touch FL. Key is ESTIMATED."""
@@ -268,10 +270,21 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "Extract melody from audio (pyin/CREPE)", **_RO})
     def fl_extract_melody(
-        path: Annotated[str, Field(description="Path to a MONOPHONIC source (solo vocal/lead/stem).")],
-        bpm: Annotated[Optional[float], Field(description="Override BPM for bar quantization; auto-detected if omitted.")] = None,
-        engine: Annotated[Optional[str], Field(description="Pitch engine: 'crepe' (accurate, needs [audio-accurate] extra), 'pyin' (light), or 'auto' (default: crepe if installed). Overrides $FLSTUDIO_MCP_PITCH_ENGINE.")] = None,
-        min_conf: Annotated[Optional[float], Field(description="Confidence gate 0..1 deciding which notes enter bridge_notes (default 0.8 crepe / 0.0 pyin). ALL notes are still returned with voiced_prob + a kept flag.")] = None,
+        path: Annotated[str, Field(
+            description="Path to a MONOPHONIC source (solo vocal/lead/stem).")],
+        bpm: Annotated[float | None, Field(
+            description="Override BPM for bar quantization; auto-detected if omitted.",
+        )] = None,
+        engine: Annotated[str | None, Field(
+            description="Pitch engine: 'crepe' (accurate, needs [audio-accurate] extra),"
+                       " 'pyin' (light), or 'auto' (default: crepe if installed)."
+                       " Overrides $FLSTUDIO_MCP_PITCH_ENGINE.",
+        )] = None,
+        min_conf: Annotated[float | None, Field(
+            description="Confidence gate 0..1 deciding which notes enter bridge_notes"
+                       " (default 0.8 crepe / 0.0 pyin). ALL notes are still returned"
+                       " with voiced_prob + a kept flag.",
+        )] = None,
     ) -> dict:
         """Transcribe a monophonic melody to quantized notes; engine-selectable
         (CREPE = accurate/heavy, pyin = light). Returns ALL notes with confidence

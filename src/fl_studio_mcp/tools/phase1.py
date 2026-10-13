@@ -54,7 +54,8 @@ def register(mcp: FastMCP) -> None:
             command=protocol.CMD_MIXER_SET_VOLUME,
             params={"track": track, "value": value, "unit": unit},
             build_restore=lambda b: {"command": protocol.CMD_MIXER_SET_VOLUME,
-                                     "params": {"track": track, "value": b["vol_norm"], "unit": "normalized"}})
+                                     "params": {"track": track, "value": b["vol_norm"],
+                                                "unit": "normalized"}})
 
     @mcp.tool(annotations={"title": "Set mixer track pan", **_WR})
     def fl_set_mixer_pan(
@@ -110,7 +111,8 @@ def register(mcp: FastMCP) -> None:
             command=protocol.CMD_CHANNEL_SET_VOLUME,
             params={"channel": channel, "value": value, "unit": unit},
             build_restore=lambda b: {"command": protocol.CMD_CHANNEL_SET_VOLUME,
-                                     "params": {"channel": channel, "value": b["vol_norm"], "unit": "normalized"}})
+                                     "params": {"channel": channel, "value": b["vol_norm"],
+                                                "unit": "normalized"}})
 
     @mcp.tool(annotations={"title": "Set channel pan", **_WR})
     def fl_set_channel_pan(
@@ -147,7 +149,8 @@ def register(mcp: FastMCP) -> None:
     # ---- safety ---------------------------------------------------------
     @mcp.tool(annotations={"title": "Take snapshot", **_RO})
     def fl_take_snapshot(
-        scope: Annotated[str, Field(description="'mixer_track:N' | 'channel:N' | 'mixer_all' | 'channels_all'")],
+        scope: Annotated[str, Field(
+            description="'mixer_track:N' | 'channel:N' | 'mixer_all' | 'channels_all'")],
     ) -> dict:
         """Read current state for a scope (for your own before/after diffing)."""
         return safety.take_snapshot(get_bridge(), scope)

@@ -10,7 +10,7 @@ session. Writes into the SELECTED pattern + channel.
 """
 from __future__ import annotations
 
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -43,11 +43,19 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "Write a raga/scale MELODY", **_WR})
     def fl_write_raga_melody(
-        notes: List[RagaNote],
-        raga: Annotated[Optional[str], Field(description="Raga/scale name (label only), e.g. 'Hamsadhwani'.")] = None,
-        root: Annotated[Optional[str], Field(description="Root/tonic (label only), e.g. 'C', 'D#'.")] = None,
-        channel: Annotated[Optional[int], Field(ge=0, description="Channel-rack channel to write into (selected first).")] = None,
-        mode: Annotated[str, Field(description="'replace' clears the pattern first; 'append' adds.")] = "replace",
+        notes: list[RagaNote],
+        raga: Annotated[str | None, Field(
+            description="Raga/scale name (label only), e.g. 'Hamsadhwani'.",
+        )] = None,
+        root: Annotated[str | None, Field(
+            description="Root/tonic (label only), e.g. 'C', 'D#'.",
+        )] = None,
+        channel: Annotated[int | None, Field(
+            ge=0, description="Channel-rack channel to write into (selected first).",
+        )] = None,
+        mode: Annotated[str, Field(
+            description="'replace' clears the pattern first; 'append' adds.",
+        )] = "replace",
     ) -> dict:
         """Write a MELODY (single-line, sequential notes) into the selected channel
         via the piano-roll bridge. YOU (Claude) generate the swaras for the named
@@ -60,11 +68,15 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "Write raga/scale CHORDS", **_WR})
     def fl_write_raga_chords(
-        notes: List[RagaNote],
-        raga: Annotated[Optional[str], Field(description="Raga/scale name (label only).")] = None,
-        root: Annotated[Optional[str], Field(description="Root/tonic (label only).")] = None,
-        channel: Annotated[Optional[int], Field(ge=0, description="Channel-rack channel to write into (selected first).")] = None,
-        mode: Annotated[str, Field(description="'replace' clears the pattern first; 'append' adds.")] = "replace",
+        notes: list[RagaNote],
+        raga: Annotated[str | None, Field(description="Raga/scale name (label only).")] = None,
+        root: Annotated[str | None, Field(description="Root/tonic (label only).")] = None,
+        channel: Annotated[int | None, Field(
+            ge=0, description="Channel-rack channel to write into (selected first).",
+        )] = None,
+        mode: Annotated[str, Field(
+            description="'replace' clears the pattern first; 'append' adds.",
+        )] = "replace",
     ) -> dict:
         """Write CHORDS / a progression (stacked notes sharing start times) into
         the selected channel via the bridge. YOU stack chord tones drawn from the
