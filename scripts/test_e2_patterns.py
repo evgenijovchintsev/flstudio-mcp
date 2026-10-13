@@ -66,23 +66,31 @@ def main() -> int:
     print(f"baseline: patterns={before_count} selected={prev_sel}")
 
     # 1. pagination -------------------------------------------------------
+    full = asyncio.run(call("fl_pattern_list", {}))
+    leftovers = [p for p in full.get("patterns", [])
+                 if p["name"].startswith("TMP_")]
+    if leftovers:
+        print(f"WARNING: leftover test pattern(s) from a previous run: "
+              f"{[p['pattern'] for p in leftovers]} -- delete them in FL "
+              f"(Del in the pattern picker) before re-running.")
     allp, cur = [], 0
     while True:
         page = asyncio.run(call("fl_pattern_list", {"start": cur, "limit": 3}))
         chunk = page.get("patterns") or []
-        allp.extend(chunk)
         if not chunk:
             break
-        cur = allp[-1]["pattern"]  # 1-based next page start == last+1 via API
-        nxt = asyncio.run(call("fl_pattern_list", {"start": cur, "limit": 3}))
-        if not (nxt.get("patterns") or []):
+        allp.extend(chunk)
+        cur += len(chunk)
+        if cur >= (page.get("total") or 0):
             break
-    full = asyncio.run(call("fl_pattern_list", {}))
     check("list returns total + items", full.get("total") == len(full.get("patterns", [])),
           f"total={full.get('total')} items={len(full.get('patterns', []))}")
     check("list items 1-based contiguous",
           [p["pattern"] for p in full.get("patterns", [])] ==
           list(range(1, (full.get("total") or 0) + 1)))
+    check("paged walk matches full list",
+          [p["pattern"] for p in allp] ==
+          [p["pattern"] for p in full.get("patterns", [])])
 
     # 2. create -----------------------------------------------------------
     created = asyncio.run(call("fl_arrange_new_pattern", {"name": "E2TEST"}))

@@ -48,11 +48,13 @@ FLBridge.apply_notes → pyscript_gen.py генерирует MCP_Apply.pyscript
   → FL читает файл заново и применяет ноты
 ```
 
-Текущая карта (67 тулов, 45 RPC-хендлеров) — в `README.md`; **известные дыры** между слоями —
-в `01` (E-2…E-5): `pattern_select`/`pattern_rename`/`pattern_get_length`/`plugin_list_params`
-объявлены в `protocol.py`, но хендлеров нет; `pattern_list`, `plugin_preset`, `api_probe`,
-`channel_get_color`, `mixer_get_color` — хендлеры есть, MCP-тула нет; MCP только пишет цвета,
-читать не умеет.
+Текущая карта (72 тула, 48 RPC-хендлеров; счётчики: `grep -c "@mcp.tool"` по
+`src/fl_studio_mcp/tools/`, regex `"([a-z_]+)": _h_` по `_HANDLERS`) — в `README.md`;
+**известные дыры** между слоями: `plugin_preset`, `api_probe`, `channel_get_color`,
+`mixer_get_color` — хендлеры есть, MCP-тула нет; MCP только пишет цвета, читать не умеет.
+Дыры E-2 закрыты (см. `docs/E2_REPORT.md`): `pattern_select`/`pattern_rename`/
+`pattern_get_length` получили хендлеры + тулы, `pattern_list` — туйл; мёртвое объявление
+`plugin_list_params` удалено из `protocol.py` (покрыто `plugin_get_params`).
 
 ## 2. Контракты, которые обязан проверять каждый ревьюер
 

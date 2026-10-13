@@ -97,9 +97,9 @@ bridge force-focuses FL first.
 
 ## Phase 5 — Plugin params (~5 tools)
 
-- `fl_plugin_list_params` — Parameter index, name, current value, value range.
-- `fl_plugin_get_param`, `_set_param`.
-- `fl_plugin_get_preset_name`, `_select_preset_index`.
+- [x] `fl_plugin_get_params` — paginated dump: index, name, normalised value (covers the old `fl_plugin_list_params` name; the dead declaration was removed in E-2, see `docs/E2_REPORT.md`).
+- [x] `fl_plugin_set_param` — single write, verified (E-1); `fl_plugin_set_params` — batch, one undo step (E-1).
+- `fl_plugin_get_preset_name`, `_select_preset_index` — not yet exposed as tools (`fl_list_presets`/`fl_suggest_preset` read the on-disk library instead).
 
 This is intentionally scoped tight. Per-VST parameter naming is a mess across
 plugins; we expose the raw FL view and let the LLM map names.
