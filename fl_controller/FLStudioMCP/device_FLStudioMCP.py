@@ -48,6 +48,11 @@ import plugins
 import transport
 import ui
 
+try:                                        # E-6 probe: score read path --
+    import flpianoroll  # importable from the CONTROLLER
+except Exception:                           # context (not the pyscript sandbox)?
+    flpianoroll = None
+
 # Arrangement module exists on FL 20.99+/21+. Import defensively so the script
 # still loads on builds that lack it.
 try:
@@ -290,7 +295,7 @@ def _h_ping(params):
     return {
         "fl_version": _fl_version,
         "protocol_version": PROTOCOL_VERSION,
-        "build": "e5-wrappers-v1",   # reload marker -- bump to verify reloads take
+        "build": "e6-flpianoroll-probe",   # reload marker -- bump to verify reloads take
         "ts": time.time(),
     }
 
@@ -912,7 +917,8 @@ def _h_api_probe(p):
     if op == "dir":
         mods = {"playlist": playlist, "arrangement": arrangement, "patterns": patterns,
                 "general": general, "transport": transport, "ui": ui, "midi": midi,
-                "mixer": mixer, "channels": channels, "plugins": plugins}
+                "mixer": mixer, "channels": channels, "plugins": plugins,
+                "flpianoroll": flpianoroll}
         mod = mods.get(p.get("module", "playlist"))
         if mod is None:
             return {"module": p.get("module"), "error": "module not available"}

@@ -20,7 +20,8 @@ _LIST_BUDGET = 600
 _MAX_PAGES = 50
 
 _Module = Literal["playlist", "arrangement", "patterns", "general",
-                  "transport", "ui", "midi", "mixer", "channels", "plugins"]
+                  "transport", "ui", "midi", "mixer", "channels", "plugins",
+                  "flpianoroll"]
 
 
 def register(mcp: FastMCP) -> None:

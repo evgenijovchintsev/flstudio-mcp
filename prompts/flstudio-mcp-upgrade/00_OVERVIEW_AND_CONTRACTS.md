@@ -54,6 +54,9 @@ FLBridge.apply_notes → pyscript_gen.py генерирует MCP_Apply.pyscript
 `plugin_preset`, `api_probe`, `channel_get_color`, `mixer_get_color` — все имеют
 MCP-тулы. `fl_undo` и пресетная навигация сознательно ВНЕ safety-слоя (снапшот
 нечитаем / restore недостоверен) — предупреждения в ответах и докстрингах.
+Нотный мост (E-6, `docs/E6_REPORT.md`): `applied` всегда честный `"unknown"`
+(песочница блокирует файлы; контроллер не импортирует `flpianoroll` — оба
+факта доказаны). `triggered` = «хоткей отправлен», не «ноты применились».
 Мёртвое объявление
 `plugin_list_params` удалено из `protocol.py` (покрыто `plugin_get_params`).
 

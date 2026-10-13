@@ -255,7 +255,9 @@ class FLBridge:
         """Author piano-roll notes locally (direct mode: this process writes
         the generated .pyscript and triggers FL itself). Auto-opens the Piano
         roll first so the trigger has a target. ``quantize`` (grid in bars)
-        instead snaps existing notes to that grid."""
+        instead snaps existing notes to that grid. Result carries honest
+        applied:"unknown" (E-6: no programmatic confirmation channel exists
+        today) plus triggered/focused/method trigger diagnostics."""
         from .pianoroll import apply_notes as _apply
         ensured = None
         if trigger:

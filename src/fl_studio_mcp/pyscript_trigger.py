@@ -15,6 +15,7 @@ import time
 
 def _trigger_macos(settle=0.35):
     """Focus FL Studio on macOS and send Cmd+Opt+Y."""
+    method = "osascript-activate+pyautogui-hotkey"
     try:
         subprocess.check_call(
             ["osascript", "-e", 'tell application "FL Studio" to activate'],
@@ -27,8 +28,10 @@ def _trigger_macos(settle=0.35):
             "platform": "macos",
             "fl_found": False,
             "focused": False,
+            "focus_ok": False,
             "sent_hotkey": False,
             "shortcut": "Cmd+Opt+Y",
+            "method": method,
             "error": f"{type(e).__name__}: {e}",
         }
 
@@ -36,14 +39,52 @@ def _trigger_macos(settle=0.35):
 
     pyautogui.FAILSAFE = False
     time.sleep(settle)
+    # E-0 Q3: the auto hotkey can drop modifiers and, worse, land in ANOTHER
+    # app if focus was stolen after activate. Verify FL is still frontmost
+    # right before sending; refuse to send to a foreign app.
+    try:
+        front = subprocess.check_output(
+            ["osascript", "-e",
+             'tell application "System Events" to get name of '
+             "first application process whose frontmost is true"],
+            text=True, timeout=2,
+        ).strip()
+        # E-6 QA B1: the System Events process name is NOT always
+        # "FL Studio" -- on this machine it is "OsxFL" (CFBundleName is
+        # still "FL Studio"). Accept both.
+        focused = any(name in front for name in ("FL Studio", "OsxFL"))
+        check_failed = False
+    except Exception:
+        # Can't verify: send anyway (activate just succeeded) but do NOT
+        # claim focus_ok -- report it as unknown.
+        focused = True
+        check_failed = True
+    if not focused:
+        return {
+            "platform": "macos",
+            "fl_found": True,
+            "focused": False,
+            "focus_ok": False,
+            "sent_hotkey": False,
+            "shortcut": "Cmd+Opt+Y",
+            "method": method,
+            "error": "FL Studio is not frontmost after activate -- hotkey "
+                     "refused (would go to another app).",
+            "hint": "Click the FL Piano roll and press Cmd+Opt+Y manually.",
+        }
     pyautogui.hotkey("command", "option", "y")
-    return {
+    out = {
         "platform": "macos",
         "fl_found": True,
-        "focused": focused,
+        "focused": True,
         "sent_hotkey": True,
         "shortcut": "Cmd+Opt+Y",
+        "method": method,
     }
+    if not check_failed:
+        out["focus_ok"] = True
+    # check_failed: focus_ok omitted -- unverified, honestly not claimed.
+    return out
 
 
 def _windows_api():

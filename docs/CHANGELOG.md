@@ -22,9 +22,12 @@ write. Confirmed on FL 24+ with MIDI scripting version 40 / embedded Python
 
 A normal OS process writing to the same directory succeeds, so it is the
 controller-script sandbox specifically, not OS permissions. Piano Roll
-`.pyscript`s run in a different sandbox and do allow file I/O, but those
-only execute on explicit user trigger -- they're not suitable for the
-heartbeat / always-on loop the server depends on.
+`.pyscript`s run in a separate sandbox (only `flpianoroll` + `os`/`json`);
+as of FL 26.1.7 (E-0 Q2 probe, 12 Oct 2026) **file I/O there is blocked
+too** — the earlier note that this sandbox allowed file I/O is disproved.
+Scripts there also only execute on explicit user trigger (`ui.runScript`
+is absent) — they're not suitable for the heartbeat / always-on loop the
+server depends on.
 
 So all transport moved to MIDI SysEx, which is allowed in controller
 scripts via `device.midiOutSysex` (out) and `OnMidiMsg` (in).
