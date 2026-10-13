@@ -15,15 +15,15 @@ from collections import deque
 from pathlib import Path
 
 from .protocol import (
-    CMD_MIXER_GET_TRACK,
     CMD_CHANNEL_GET,
-    CMD_MIXER_LIST_TRACKS,
+    CMD_CHANNEL_GET_GRID,
     CMD_CHANNEL_LIST,
-    CMD_PLUGIN_GET_PARAM,
     CMD_MIXER_GET_ROUTING,
+    CMD_MIXER_GET_TRACK,
+    CMD_MIXER_LIST_TRACKS,
     CMD_PATTERN_GET_LENGTH,
+    CMD_PLUGIN_GET_PARAM,
 )
-
 
 _DIR = Path.home() / ".flstudio-mcp"
 _PATH = _DIR / "changelog.jsonl"
@@ -98,12 +98,35 @@ def take_snapshot(bridge, scope):
 
     scope: "mixer_track:N" | "channel:N" | "mixer_all" | "channels_all"
            | "plugin_param:TRACK:SLOT:PARAM" | "route:SRC:DST" | "pattern:N"
+           | "channel_grid:N"
     """
     kind, _, arg = str(scope).partition(":")
     if kind == "mixer_track":
         return bridge.call(CMD_MIXER_GET_TRACK, {"index": int(arg)})
     if kind == "channel":
         return bridge.call(CMD_CHANNEL_GET, {"index": int(arg)})
+    if kind == "channel_grid":
+        # Whole grid of one channel: bits AND velocities (budget-walked
+        # pages, same 16-step windows the controller serves). Velocities
+        # live in the snapshot so rollback can put ON bits back at their
+        # real velocity -- restoring with value=1 made hits silent
+        # (E-4 review blocker).
+        base = {"channel": int(arg)}
+        bits, vels = [], []
+        total = None
+        start = 0
+        for _ in range(500):
+            page = bridge.call(CMD_CHANNEL_GET_GRID,
+                               {**base, "start": start, "count": 16})
+            total = page.get("steps_total", total)
+            bits.extend(page.get("grid_bits") or [])
+            vels.extend(page.get("grid_velocities") or [])
+            nxt = page.get("next_start")
+            if nxt is None or int(nxt) <= start:
+                break
+            start = int(nxt)
+        return {"channel": int(arg), "steps_total": total,
+                "grid_bits": bits, "grid_velocities": vels}
     if kind == "plugin_param":
         track, slot, idx = (int(x) for x in arg.split(":"))
         return bridge.call(CMD_PLUGIN_GET_PARAM,
@@ -209,6 +232,13 @@ def safe_write(bridge, *, tool, scope, command, params, build_restore,
     BEFORE the single changelog append, so the log still holds one entry whose
     ``after`` is the true final state. The response then carries
     ``verified: bool`` and ``attempts: int`` (1 = landed first try).
+
+    If the handler answers ``{"ok": False, "error": ...}`` (a controller-side
+    guard rejection -- out-of-range step, name collision, ...), this raises
+    ``ValueError`` and logs NOTHING: the write did not happen, so the tool
+    error must say so instead of wrapping the rejection in ``ok: true``.
+    Successful responses also carry ``echo`` -- the handler's own reply
+    (applied counts, velocity readbacks, ...). (E-4 live-run findings.)
     """
     if _dry_run:
         return {
@@ -219,6 +249,13 @@ def safe_write(bridge, *, tool, scope, command, params, build_restore,
     before = take_snapshot(bridge, scope)
     restore = build_restore(before)
     echo = bridge.call(command, params)
+    # A handler that answers {"ok": False, "error": ...} (guard rejection:
+    # out-of-range step, name collision, ...) did NOT write anything.
+    # Fail loudly before the changelog so the tool error matches reality
+    # instead of wrapping a rejected write in ok:true. (E-4 live-run finding)
+    if isinstance(echo, dict) and echo.get("ok") is False:
+        raise ValueError(
+            f"write rejected by FL: {echo.get('error') or 'unknown error'}")
     echo = _verify_retry(bridge, command, params, echo, verify)
     # FL commits some writes (notably mixer fader volume/pan) on a LATER
     # script-tick, so the handler's SAME-tick readback (echo) can report the
@@ -235,7 +272,7 @@ def safe_write(bridge, *, tool, scope, command, params, build_restore,
         "before": before, "after": after, "echo": echo, "restore": restore,
         "ts": time.time(),
     })
-    out = {"ok": True, "before": before, "after": after}
+    out = {"ok": True, "before": before, "after": after, "echo": echo}
     if verify_value is not None:
         out["verified"] = bool(verified)
         out["attempts"] = attempts
@@ -278,10 +315,18 @@ def safe_write_group(bridge, *, tool, scope, writes, delay=0.0,
         befores.append(before)
         restores.append(w["restore"](before))
     afters, verified_out, attempts_out = [], [], []
+    fail = None
     for i, w in enumerate(writes):
         if i and delay:
             time.sleep(delay)          # between writes -- FL drops back-to-back
         echo = bridge.call(w["command"], w["params"])
+        # Same honesty rule as safe_write: a handler ok:false wrote nothing.
+        # Stop here but STILL log the changelog below -- restores cover every
+        # snapshotted scope, so the writes that DID land stay rollback-able.
+        if isinstance(echo, dict) and echo.get("ok") is False:
+            fail = (f"write {i} rejected by FL: "
+                    f"{echo.get('error') or 'unknown error'}")
+            break
         after, verified, attempts = echo, None, None
         vv = verify_values[i] if (verify_values and i < len(verify_values)) else None
         if vv is not None:
@@ -299,6 +344,9 @@ def safe_write_group(bridge, *, tool, scope, writes, delay=0.0,
         "ts": time.time(),
     }
     _log.append(entry)
+    if fail:
+        raise ValueError(
+            fail + " (earlier writes in this group ARE rollback-able)")
     out = {"ok": True, "before": befores, "after": afters}
     if verify_values is not None:
         out["verified"] = verified_out
