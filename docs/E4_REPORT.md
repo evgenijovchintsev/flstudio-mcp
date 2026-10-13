@@ -1,7 +1,7 @@
 # E-4 Report — Channel Rack step-grid (draw / read / clear)
 
 **Epic:** E-4 из `prompts/flstudio-mcp-upgrade/01_IMPLEMENTATION_PROMPTS.md`
-**Branch:** `epic/E-4` — `cc89b9a` (implementation), + safety-contract fix (this report's live-run findings)
+**Branch:** `epic/E-4` — `cc89b9a` (implementation), `2c3b7d5` (safety-contract + docs), review fixes (this report)
 **Live FL:** Producer Edition v26.1.7 [build 5419], controller marker `e4-grid-v1`
 
 ## API facts (verified live + official docs)
@@ -27,15 +27,23 @@ Docs: <https://www.image-line.com/fl-studio-learning/fl-studio-beta-online-manua
   `channel_set_grid_bit`, `channel_set_grid_bits`, `channel_clear_grid`.
 - **Windowed reads**: `get_grid` returns 16 steps per RPC (budget: the
   64-step dump measured ~431 B in `API_PROBE_26.md` Q1) with `next_start`
-  pagination; the MCP tool merges pages up to the `_LIST_BUDGET`.
+  pagination; the MCP tool merges pages and stops before the merged
+  lists exceed `_LIST_BUDGET = 600` compact-JSON bytes, returning
+  `next_start` so the agent paginates the rest (E-4 review blocker (д)
+  — an unbounded `count=None` merge measured 929 B with no resume point).
 - **Batch is ONE RPC** (`channel_set_grid_bits`, max 64 pairs), not
   `safe_write_group`: one SysEx, one undo entry, no E-1 pacing needed.
-  Recorded deviation from the epic sketch — deliberate.
-- **Rollback**: new snapshot kind `channel_grid:N` = the whole bit grid;
-  restore rewrites the touched bits through the batch command.
-  **Velocity is NOT in the snapshot** — rollback restores 0/1 bits only.
-  Documented limit; per-step velocities of pre-existing hits survive a
-  rollback of a batch that only re-set their bit.
+  Recorded deviation from the epic sketch — deliberate. Live-verified at
+  the full 64-pair cap (~0.6 KB payload lands, `applied=64`).
+- **Rollback**: new snapshot kind `channel_grid:N` = the whole bit grid
+  **plus per-step velocities** (same page walk); restore rewrites the
+  touched bits through the batch command — ON bits at their snapshotted
+  velocity, OFF bits as 0. (Review blocker (б): the first version stored
+  bits only and restored ON hits with value=1 — silent. Live proof of
+  the fix: `set(48,90) → clear → rollback` → bit48 back at velocity 90.)
+  Velocities that are unreadable in the snapshot (`None`/`-1`/error
+  string on an ON bit) fall back to **115**, FL's observed default for
+  pattern-authored hits.
 - Writes route through `safe_write` (one changelog entry per tool call).
 
 ## Safety-layer findings (cross-cutting, fixed in this epic)
@@ -56,7 +64,7 @@ Live run exposed two honesty gaps in `safety.safe_write`:
 
 | Step | Result |
 |---|---|
-| `get_grid(0)` baseline | `steps_total=64`, 808 Kick bits `1011…` at 0,2,3 |
+| `get_grid(0)` baseline | 808 Kick bits `1011…` at 0,2,3 |
 | dry-run `set_grid_bits` 4-on-the-floor | `planned`, grid unchanged |
 | real batch `[[0,100],[4,100],[8,100],[12,100]]` | `echo.applied=4`, bits at 0,4,8,12 on (old 2,3 kept) |
 | `rollback_last_change` | grid = baseline |
@@ -66,6 +74,14 @@ Live run exposed two honesty gaps in `safety.safe_write`:
 | single bit + `echo.velocity_readback` | `80` = written value |
 | `clear_grid(0..3)` + rollback | zeroed, then restored |
 | `channel=-1` | pydantic `ge=1` validation error |
+| **review fix (б)**: empty ch2, `set(48,90) → clear → rollback` | bit48 back at **velocity 90** (was silently 1) |
+| **review fix (б)**: `clear` over real 808 hits + rollback | bits and velocities (`40` we set, originals) all back |
+| **review fix (д)**: full read, `count=None` | 586 B / 48 steps, `next_start=48`; union of pages covers **256/256** in 6 pages |
+| **risk (батч)**: full 64-pair batch | `applied=64`, velocities round-trip `[1,3,5,7,…]`, rollback clears all |
+
+Bonus live fact: the user's `Pattern 1` had grown to 64 beats (16 bars)
+between sessions — `steps_total` correctly followed to **256** (the
+no-hardcode derivation doing its job; pagination covered the whole grid).
 
 ## DoD (спека E-4)
 
@@ -79,5 +95,9 @@ Live run exposed two honesty gaps in `safety.safe_write`:
 ## Known limits / follow-ups
 
 - Per-step `pRelease`/`pFinePitch`/`pPan` are not exposed (only on/off + velocity).
-- Rollback does not restore per-step velocities (bit-only snapshot).
-- `get_grid` window is 16 steps/RPC by design; full 64-step dump = 4 merged pages.
+- Unreadable snapshot velocities on ON bits fall back to 115 on restore
+  (conscious default, not a silent 1).
+- `get_grid` window is 16 steps/RPC by design; the merged reply is
+  budget-capped (600 B) — resume via `next_start`.
+- Pre-fix lossy rollbacks had already stamped velocity 1 onto the 808
+  Kick's hits; repaired live to the FL default 115 after the fix landed.

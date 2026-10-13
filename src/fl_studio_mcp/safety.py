@@ -106,13 +106,27 @@ def take_snapshot(bridge, scope):
     if kind == "channel":
         return bridge.call(CMD_CHANNEL_GET, {"index": int(arg)})
     if kind == "channel_grid":
-        # Whole 0/1 bit grid of one channel (budget-walked pages). The
-        # rollback basis for set/clear: restore rewrites these bits.
-        from .connection import fetch_all_pages
-        data = fetch_all_pages(bridge, CMD_CHANNEL_GET_GRID, "grid_bits",
-                               {"channel": int(arg)})
-        return {"channel": int(arg), "steps_total": data.get("total"),
-                "grid_bits": data.get("grid_bits") or []}
+        # Whole grid of one channel: bits AND velocities (budget-walked
+        # pages, same 16-step windows the controller serves). Velocities
+        # live in the snapshot so rollback can put ON bits back at their
+        # real velocity -- restoring with value=1 made hits silent
+        # (E-4 review blocker).
+        base = {"channel": int(arg)}
+        bits, vels = [], []
+        total = None
+        start = 0
+        for _ in range(500):
+            page = bridge.call(CMD_CHANNEL_GET_GRID,
+                               {**base, "start": start, "count": 16})
+            total = page.get("steps_total", total)
+            bits.extend(page.get("grid_bits") or [])
+            vels.extend(page.get("grid_velocities") or [])
+            nxt = page.get("next_start")
+            if nxt is None or int(nxt) <= start:
+                break
+            start = int(nxt)
+        return {"channel": int(arg), "steps_total": total,
+                "grid_bits": bits, "grid_velocities": vels}
     if kind == "plugin_param":
         track, slot, idx = (int(x) for x in arg.split(":"))
         return bridge.call(CMD_PLUGIN_GET_PARAM,
