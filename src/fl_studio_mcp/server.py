@@ -39,10 +39,13 @@ from .tools import pattern as pattern_tools
 from .tools import phase1 as phase1_tools
 from .tools import pianoroll as pianoroll_tools
 from .tools import plugin as plugin_tools
+from .tools import preset as preset_tools
 from .tools import presets as presets_tools
+from .tools import probe as probe_tools
 from .tools import resources as resource_defs
 from .tools import routing as routing_tools
 from .tools import transport as transport_tools
+from .tools import undo as undo_tools
 from .tools import visual as visual_tools
 
 logger = logging.getLogger("fl_studio_mcp")
@@ -104,6 +107,9 @@ def build_server() -> FastMCP:
     mix_doctor_tools.register(mcp)  # Mix Doctor: diagnose whole mix + gated apply-fixes
     pattern_tools.register(mcp)     # E-2: pattern list/select/rename/get_length
     grid_tools.register(mcp)        # E-4: Channel Rack step-grid read/draw/clear
+    preset_tools.register(mcp)      # E-5: plugin preset info/next/prev
+    probe_tools.register(mcp)       # E-5: fl_api_probe (module name listing)
+    undo_tools.register(mcp)        # E-5: fl_undo (outside the safety layer)
     visual_tools.register(mcp)      # E-3: fl_screenshot (agent debugging)
     return mcp
 
