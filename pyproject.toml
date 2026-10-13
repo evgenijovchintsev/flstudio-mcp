@@ -86,4 +86,6 @@ ignore = ["UP031"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# "." so tests can `from tests.conftest import FakeBridge` under bare
+# `pytest -q` (CI); `python -m pytest` would add cwd anyway.
+pythonpath = ["src", "."]
