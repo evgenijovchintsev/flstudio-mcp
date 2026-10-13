@@ -16,7 +16,7 @@ import os
 import socket
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 try:
     import mido
@@ -34,7 +34,6 @@ from .protocol import (
     DIR_RESPONSE,
     HEARTBEAT_STALE_SECONDS,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +71,7 @@ class _Slot:
 
     def __init__(self) -> None:
         self.event = threading.Event()
-        self.payload: Optional[dict] = None
+        self.payload: dict | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +86,7 @@ def _ensure_mido() -> None:
         )
 
 
-def _find_port(pattern: str, names: list[str]) -> Optional[str]:
+def _find_port(pattern: str, names: list[str]) -> str | None:
     """Case-insensitive substring match. Returns the first match or None."""
     needle = pattern.lower()
     for name in names:
@@ -114,8 +113,8 @@ class FLBridge:
 
     def __init__(
         self,
-        port_to_fl: Optional[str] = None,
-        port_from_fl: Optional[str] = None,
+        port_to_fl: str | None = None,
+        port_from_fl: str | None = None,
         *,
         default_timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ):
@@ -125,9 +124,9 @@ class FLBridge:
         self.default_timeout = default_timeout
 
         self._lock = threading.Lock()
-        self._pending: Dict[str, _Slot] = {}
+        self._pending: dict[str, _Slot] = {}
         self._last_heartbeat: float = 0.0
-        self._heartbeat_payload: Optional[dict] = None
+        self._heartbeat_payload: dict | None = None
 
         self._out_port = None
         self._in_port = None
@@ -162,23 +161,20 @@ class FLBridge:
         self._opened = True
 
     def close(self) -> None:
+        import contextlib
         if self._in_port is not None:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover
                 self._in_port.close()
-            except Exception:  # pragma: no cover
-                pass
         if self._out_port is not None:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover
                 self._out_port.close()
-            except Exception:  # pragma: no cover
-                pass
         self._in_port = None
         self._out_port = None
         self._opened = False
 
     # -- health --------------------------------------------------------------
 
-    def heartbeat_age(self) -> Optional[float]:
+    def heartbeat_age(self) -> float | None:
         if self._last_heartbeat == 0.0:
             return None
         return max(0.0, time.monotonic() - self._last_heartbeat)
@@ -218,9 +214,9 @@ class FLBridge:
     def call(
         self,
         command: str,
-        params: Optional[dict] = None,
+        params: dict | None = None,
         *,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> Any:
         self.check_alive()
 
@@ -322,8 +318,8 @@ class TCPBridge:
 
     def __init__(
         self,
-        host: Optional[str] = None,
-        port: Optional[int] = None,
+        host: str | None = None,
+        port: int | None = None,
         *,
         default_timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ):
@@ -335,21 +331,20 @@ class TCPBridge:
     # -- transport -----------------------------------------------------------
 
     def _rpc(self, req: dict, timeout: float) -> dict:
-        with self._lock:
-            with socket.create_connection((self.host, self.port), timeout=timeout) as s:
-                s.settimeout(timeout)
-                s.sendall((json.dumps(req) + "\n").encode("utf-8"))
-                buf = b""
-                while b"\n" not in buf:
-                    chunk = s.recv(4096)
-                    if not chunk:
-                        break
-                    buf += chunk
+        with self._lock, socket.create_connection((self.host, self.port), timeout=timeout) as s:
+            s.settimeout(timeout)
+            s.sendall((json.dumps(req) + "\n").encode("utf-8"))
+            buf = b""
+            while b"\n" not in buf:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
         if not buf:
             raise FLBridgeError("daemon closed the connection without replying")
         return json.loads(buf.split(b"\n", 1)[0].decode("utf-8"))
 
-    def _daemon_unreachable(self, exc: Exception) -> "FLPortMissing":
+    def _daemon_unreachable(self, exc: Exception) -> FLPortMissing:
         return FLPortMissing(
             "Cannot reach the fl-studio-mcp daemon at %s:%d. Start it (run "
             "`fl-studio-mcp-daemon` in a normal terminal / on login) so MIDI "
@@ -359,7 +354,7 @@ class TCPBridge:
 
     # -- health --------------------------------------------------------------
 
-    def heartbeat_age(self) -> Optional[float]:
+    def heartbeat_age(self) -> float | None:
         try:
             resp = self._rpc({"op": "health"}, timeout=5.0)
         except OSError:
@@ -379,9 +374,9 @@ class TCPBridge:
     def call(
         self,
         command: str,
-        params: Optional[dict] = None,
+        params: dict | None = None,
         *,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> Any:
         t = timeout or self.default_timeout
         try:
@@ -390,7 +385,7 @@ class TCPBridge:
                 timeout=t + 5.0,
             )
         except OSError as e:
-            raise self._daemon_unreachable(e)
+            raise self._daemon_unreachable(e) from e
         if resp.get("ok"):
             return resp.get("data")
         exc = resp.get("exc")
@@ -416,7 +411,7 @@ class TCPBridge:
                 timeout=30.0,
             )
         except OSError as e:
-            raise self._daemon_unreachable(e)
+            raise self._daemon_unreachable(e) from e
 
     def open(self) -> None:  # pragma: no cover - parity with FLBridge
         return None
@@ -426,10 +421,10 @@ class TCPBridge:
 
 
 # Module-level singleton.
-_bridge: Optional["FLBridge | TCPBridge"] = None
+_bridge: FLBridge | TCPBridge | None = None
 
 
-def get_bridge() -> "FLBridge | TCPBridge":
+def get_bridge() -> FLBridge | TCPBridge:
     """Return the process-wide bridge.
 
     ``FLSTUDIO_MCP_TRANSPORT=tcp`` selects the daemon-backed :class:`TCPBridge`

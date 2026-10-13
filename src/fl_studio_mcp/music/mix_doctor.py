@@ -126,8 +126,9 @@ def gather_snapshot(bridge, *, with_params=True, max_tracks=64, param_cap=120,
 
     tracks_raw = (_safe(lambda: fetch_all_pages(bridge, protocol.CMD_MIXER_LIST_TRACKS, "tracks"),
                         "mixer_list_tracks", {"tracks": []}) or {}).get("tracks", [])
-    routing_raw = (_safe(lambda: fetch_all_pages(bridge, protocol.CMD_MIXER_GET_ROUTING_ALL, "routing"),
-                         "mixer_get_routing_all", {"routing": []}) or {}).get("routing", [])
+    routing_raw = (_safe(
+        lambda: fetch_all_pages(bridge, protocol.CMD_MIXER_GET_ROUTING_ALL, "routing"),
+        "mixer_get_routing_all", {"routing": []}) or {}).get("routing", [])
     route_by = {r.get("i", r.get("index")): (r.get("routes_to") or []) for r in routing_raw}
 
     indices = [t.get("i", t.get("index")) for t in tracks_raw[:max_tracks]]
@@ -163,7 +164,7 @@ def gather_snapshot(bridge, *, with_params=True, max_tracks=64, param_cap=120,
             entry = {"slot": slot, "name": s.get("name")}
             if with_params and slot is not None:
                 entry["params"] = _safe(
-                    lambda i=i, slot=slot: _fetch_params_bounded(bridge, protocol, i, slot, param_cap),
+        lambda i=i, slot=slot: _fetch_params_bounded(bridge, protocol, i, slot, param_cap),
                     "params[%s:%s]" % (i, slot), [])
             plugins.append(entry)
         tracks.append({
@@ -216,7 +217,8 @@ def rule_clipping(tracks):
         if db >= CLIP_HARD_DB:
             out.append(finding(
                 "clipping", "high", t["name"], "peak %.1f dBFS (>= 0)" % db,
-                "%s is clipping (peak %.1f dBFS). Pull its level down or add a limiter." % (t["name"], db),
+                "%s is clipping (peak %.1f dBFS). Pull its level down or add a limiter."
+                % (t["name"], db),
                 {"intent": "fl_set_mixer_volume", "args": {"track": t["index"]},
                  "alt_intent": "fl_apply_compression_intent",
                  "desc": "reduce %s ~ -3 dB, or limit it" % t["name"]}))
@@ -235,7 +237,8 @@ def rule_headroom(tracks):
     if master and master.get("peak_db") is not None and master["peak_db"] > CLIP_DB:
         out.append(finding(
             "headroom", "high", "Master", "Master peak %.1f dBFS" % master["peak_db"],
-            "Master is near/over 0 dBFS (%.1f) -- no headroom for the master chain." % master["peak_db"],
+            "Master is near/over 0 dBFS (%.1f) -- no headroom for the master chain."
+            % master["peak_db"],
             {"intent": "fl_set_mixer_volume", "args": {"track": 0},
              "desc": "lower Master / gain-stage to leave ~ -6 dB headroom"}))
     aud = [t for t in _audible(tracks) if t.get("peak_db") is not None]
@@ -245,8 +248,10 @@ def rule_headroom(tracks):
             "headroom", "medium", None,
             "%d/%d audible tracks hotter than %.0f dB: %s"
             % (len(hot), len(aud), HOT_DB, ", ".join(h["name"] for h in hot[:6])),
-            "Many tracks run hot at once -- overall mix headroom is low. Pull faders or bus-process.",
-            {"intent": "level", "args": {}, "desc": "trim the hot tracks ~ -3 dB or route them to a bus"}))
+            "Many tracks run hot at once -- overall mix headroom is low."
+            " Pull faders or bus-process.",
+            {"intent": "level", "args": {},
+             "desc": "trim the hot tracks ~ -3 dB or route them to a bus"}))
     return out
 
 
@@ -320,7 +325,8 @@ def rule_ungrouped(tracks):
                 "ungrouped", "low", None,
                 "%d %s tracks not bused together: %s"
                 % (len(members), fam, ", ".join(m["name"] for m in members)),
-                "%d %s tracks route straight out with no shared bus -- group them for shared processing."
+                "%d %s tracks route straight out with no shared bus"
+                " -- group them for shared processing."
                 % (len(members), fam),
                 {"intent": "fl_group_tracks", "args": {"tracks": [m["index"] for m in members]},
                  "desc": "group the %s tracks onto a bus" % fam}))

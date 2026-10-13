@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -27,18 +27,23 @@ class ExportNote(BaseModel):
 
 class ExportTrack(BaseModel):
     name: str = Field(description="Track name, e.g. 'Drums', 'Bass', 'Lead'.")
-    channel: int = Field(0, ge=0, le=15, description="MIDI channel 0-15 (9 = GM drums, by convention).")
-    notes: List[ExportNote]
+    channel: int = Field(
+        0, ge=0, le=15, description="MIDI channel 0-15 (9 = GM drums, by convention).")
+    notes: list[ExportNote]
 
 
 def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"title": "Export arrangement to .mid", "readOnlyHint": False,
-                           "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
+                           "destructiveHint": False, "idempotentHint": False,
+                           "openWorldHint": True})
     def fl_export_midi(
-        tracks: List[ExportTrack],
+        tracks: list[ExportTrack],
         bpm: Annotated[float, Field(gt=0, description="Tempo (BPM).")] = 120.0,
-        output_path: Annotated[Optional[str], Field(description="Output .mid path; defaults to ~/.flstudio-mcp/exports/.")] = None,
-        beats_per_bar: Annotated[int, Field(ge=1, le=16, description="Time-signature numerator (4 = 4/4).")] = 4,
+        output_path: Annotated[str | None, Field(
+            description="Output .mid path; defaults to ~/.flstudio-mcp/exports/.",
+        )] = None,
+        beats_per_bar: Annotated[int, Field(
+            ge=1, le=16, description="Time-signature numerator (4 = 4/4).")] = 4,
     ) -> dict:
         """Write a type-1 multi-track .mid from an arrangement spec. YOU (Claude)
         generate the whole arrangement -- multiple named tracks, each with notes

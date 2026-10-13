@@ -40,8 +40,7 @@ def _fl_studio_dirs():
     home = Path.home()
     for r in (home / "Documents" / "Image-Line", home / "Image-Line"):
         if r.is_dir():
-            for fl in sorted(r.glob("FL Studio*"), reverse=True):
-                yield fl
+            yield from sorted(r.glob("FL Studio*"), reverse=True)
 
 
 def find_fl_presets():

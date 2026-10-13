@@ -502,7 +502,8 @@ def _channel_list_entry(i):
 
 
 def _h_channel_list(params):
-    return _paginate(channels.channelCount(), params.get("start", 0), _channel_list_entry, "channels")
+    return _paginate(channels.channelCount(), params.get("start", 0),
+                    _channel_list_entry, "channels")
 
 
 def _h_channel_get(params):

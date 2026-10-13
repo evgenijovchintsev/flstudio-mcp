@@ -43,9 +43,10 @@ import os
 import socketserver
 import threading
 
-from . import __version__
-from . import protocol
+from . import __version__, protocol
 from .connection import (
+    DEFAULT_TCP_HOST,
+    DEFAULT_TCP_PORT,
     FLBridge,
     FLBridgeError,
     FLCommandFailed,
@@ -53,8 +54,6 @@ from .connection import (
     FLPortMissing,
     FLTimeout,
 )
-from .connection import DEFAULT_TCP_HOST, DEFAULT_TCP_PORT
-
 
 logger = logging.getLogger("fl_studio_mcp.daemon")
 

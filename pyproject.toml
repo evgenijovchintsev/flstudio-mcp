@@ -74,6 +74,16 @@ packages = ["src/fl_studio_mcp"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# scripts/ = one-off live-test / calibration scripts (need a running FL);
+# not part of the shipped package, not unit-tested -- excluded from lint.
+extend-exclude = ["scripts/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+# UP031 (printf-style % formatting) is the codebase's established style,
+# including the FL controller script (runs on FL's embedded Python).
+ignore = ["UP031"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

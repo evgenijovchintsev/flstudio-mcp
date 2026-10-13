@@ -7,7 +7,7 @@ its params via the existing plugin tools (fl_plugin_set_param / fl_apply_*_inten
 """
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -22,7 +22,10 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"title": "List presets (from disk)", **_RO})
     def fl_list_presets(
-        plugin_filter: Annotated[Optional[str], Field(description="Plugin to narrow to (e.g. 'Serum', 'Fruity Parametric EQ 2'); omit for a summary.")] = None,
+        plugin_filter: Annotated[str | None, Field(
+            description="Plugin to narrow to (e.g. 'Serum', 'Fruity Parametric EQ 2');"
+                       " omit for a summary.",
+        )] = None,
     ) -> dict:
         r"""Read preset NAMES from disk: FL Presets\ (per-plugin 'Plugin presets',
         plus Channel/Mixer presets) + Serum 2 Presets (.serumpreset). With NO
@@ -41,13 +44,15 @@ def register(mcp: FastMCP) -> None:
                 out["note"] = ("no presets for that plugin; call fl_list_presets() (no filter) "
                                "to see which plugins have presets.")
             elif lib["count"] > _CAP:
-                out["note"] = "capped to %d per category -- narrow the filter or use fl_suggest_preset." % _CAP
+                out["note"] = ("capped to %d per category -- narrow the filter"
+                               " or use fl_suggest_preset." % _CAP)
             return out
         return {"ok": True, **lib}
 
     @mcp.tool(annotations={"title": "Suggest a preset by description", **_RO})
     def fl_suggest_preset(
-        description: Annotated[str, Field(description="The sound you want, e.g. 'vintage bass', 'bright pluck'.")],
+        description: Annotated[str, Field(
+            description="The sound you want, e.g. 'vintage bass', 'bright pluck'.")],
         plugin: Annotated[str, Field(description="Plugin whose presets to search, e.g. 'Serum'.")],
     ) -> dict:
         """Suggest presets from YOUR library matching a description, for a given
@@ -69,6 +74,7 @@ def register(mcp: FastMCP) -> None:
                 "available": len(allnames), "matches": matches or allnames[:15],
                 "matched_by": "preset NAME vs description (name-only -- no sound)",
                 "guidance": ("Recommend the best 2-4 of 'matches' (apply your own knowledge: e.g. "
-                             "Serum 'BA'=bass, 'LD'=lead). FL can't load presets via the API -- tell "
+                             "Serum 'BA'=bass, 'LD'=lead)."
+                             " FL can't load presets via the API -- tell "
                              "the user to load the chosen one in %s, then tweak its params via "
                              "fl_plugin_set_param / fl_apply_*_intent." % plugin)}

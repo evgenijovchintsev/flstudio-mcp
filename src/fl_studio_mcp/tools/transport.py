@@ -90,7 +90,9 @@ def register(mcp: FastMCP) -> None:
         },
     )
     def fl_set_tempo(
-        bpm: Annotated[float, Field(ge=10.0, le=999.0, description="Target tempo in BPM, FL accepts 10-999.")],
+        bpm: Annotated[float, Field(
+            ge=10.0, le=999.0, description="Target tempo in BPM, FL accepts 10-999.",
+        )],
     ) -> dict:
         """Set the FL Studio project tempo. Range is 10-999 BPM (FL's own limits)."""
         data = _safe_call(protocol.CMD_SET_TEMPO, {"bpm": float(bpm)})

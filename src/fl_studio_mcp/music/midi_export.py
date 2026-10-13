@@ -46,7 +46,8 @@ def build_midi(tracks, bpm, ppq=480, beats_per_bar=4):
             st = max(0, int(round(float(n["start_bars"]) * ticks_per_bar)))
             dur = max(1, int(round(float(n["length_bars"]) * ticks_per_bar)))
             events.append((st, 1, mido.Message("note_on", note=pitch, velocity=vel, channel=ch)))
-            events.append((st + dur, 0, mido.Message("note_off", note=pitch, velocity=0, channel=ch)))
+            events.append((st + dur, 0,
+                          mido.Message("note_off", note=pitch, velocity=0, channel=ch)))
         events.sort(key=lambda e: (e[0], e[1]))       # off before on at a tie
         prev = 0
         for abs_t, _order, msg in events:
