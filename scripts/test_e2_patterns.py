@@ -91,6 +91,11 @@ def main() -> int:
     check("paged walk matches full list",
           [p["pattern"] for p in allp] ==
           [p["pattern"] for p in full.get("patterns", [])])
+    t_all = full.get("total") or 0
+    ns_page = asyncio.run(call("fl_pattern_list", {"start": 0, "limit": 1}))
+    check("limit page carries next_start",
+          ns_page.get("next_start") == (1 if t_all > 1 else None),
+          f"next_start={ns_page.get('next_start')} total={t_all}")
 
     # 2. create -----------------------------------------------------------
     created = asyncio.run(call("fl_arrange_new_pattern", {"name": "E2TEST"}))

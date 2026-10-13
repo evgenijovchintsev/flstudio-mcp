@@ -48,7 +48,9 @@ def register(mcp: FastMCP) -> None:
                          Field(gt=0, description="Max items; omit for ALL pages.")] = None,
     ) -> dict:
         """List patterns: {total, patterns:[{pattern (1-based), name}]}.
-        Paginated (600-byte pages); omit limit to walk every page."""
+        Paginated (600-byte pages); with limit the response carries
+        start/next_start (next page, None when done); omit limit to walk
+        every page."""
         bridge = get_bridge()
         if limit is None:
             return fetch_all_pages(bridge, protocol.CMD_PATTERN_LIST,
@@ -64,7 +66,10 @@ def register(mcp: FastMCP) -> None:
             if nxt is None or int(nxt) <= cur or not chunk:
                 break
             cur = int(nxt)
-        return {"total": total, "start": start, "patterns": out}
+        ns = start + len(out)
+        return {"total": total, "start": start,
+                "next_start": ns if total is not None and ns < total else None,
+                "patterns": out}
 
     @mcp.tool(annotations={"title": "Select a pattern", **_WR})
     def fl_pattern_select(
