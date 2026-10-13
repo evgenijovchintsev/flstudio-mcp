@@ -49,7 +49,7 @@ Application cannot be confirmed (`applied: "unknown"` — E-6/E-7).
 ```
 ruff check .                     # lint (config in pyproject.toml)
 pytest -q                        # unit tests (fake bridge; no FL needed)
-python scripts/test_bridge.py    # protocol sanity (no FL needed)
+python scripts/test_bridge.py    # protocol sanity (needs FL + controller)
 ```
 
 Live checks (need FL Studio + controller loaded):

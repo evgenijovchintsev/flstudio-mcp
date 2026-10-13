@@ -5,7 +5,7 @@ Spec: `prompts/flstudio-mcp-upgrade/01_IMPLEMENTATION_PROMPTS.md` epic E-8
 
 ## What shipped
 
-1. **`AGENTS.md`** — 93-line orientation: layer diagram, the four hard
+1. **`AGENTS.md`** — 78-line orientation: layer diagram, the four hard
    contracts (protocol-sync, SysEx budget, safety-layer writes, tool
    conventions), check commands, live-testing recipe (daemon transport,
    controller deploy + md5 + build marker), file map.
@@ -51,8 +51,9 @@ rewrite the whole codebase:
 - manually fix the rest: 85 E501 wraps, E702 semicolons, B904
   `raise ... from`, SIM105/117, UP028.
 
-Result: **0 errors**, and `scripts/test_bridge.py` + full package import
-verified after every batch.
+Result: **0 errors**, and `scripts/test_bridge.py` (with FL open — it
+pings the live controller) + full package import verified after every
+batch.
 
 ## DoD check
 
