@@ -7,6 +7,7 @@ vs pyautogui's 0.27 s), falling back to `pyautogui.screenshot()`.
 """
 from __future__ import annotations
 
+import contextlib
 import struct
 import subprocess
 import sys
@@ -69,8 +70,11 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"title": "Screenshot (agent debugging)", **_RO})
     def fl_screenshot(
         path: Annotated[str | None,
-                        Field(description="Output .png path; omit for "
-                              "~/.flstudio-mcp/shots/<timestamp>.png.")] = None,
+                        Field(description="File NAME or full path inside "
+                              "~/.flstudio-mcp/shots/ (nothing outside is "
+                              "accepted, existing files are never "
+                              "overwritten); omit for a timestamped "
+                              "default.")] = None,
         region: Annotated[list[int] | None,
                           Field(description="Crop [x, y, w, h] in LOGICAL "
                                 "points (pyautogui space), e.g. "
@@ -81,7 +85,9 @@ def register(mcp: FastMCP) -> None:
 
         Returns {ok, path, size, width, height}; Read the path to view it.
         Files go to ~/.flstudio-mcp/shots/<timestamp>.png and are cleaned up
-        after 7 days unless path= is given (must end in .png).
+        after 7 days. path= accepts only a name or path INSIDE that shots
+        directory (it is resolved and bound there -- the tool never writes
+        elsewhere) and never overwrites an existing file.
 
         Coordinates: region is in LOGICAL points -- the space pyautogui
         clicks in, NOT image pixels. A retina PNG is 2x bigger than the
@@ -102,20 +108,31 @@ def register(mcp: FastMCP) -> None:
                     "error": f"region must be [x, y, w, h] with x,y >= 0 and "
                              f"w,h > 0 (logical points); got {region!r}"}
         try:
+            _SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            _cleanup_old_shots(_SHOTS_DIR)
             if path is None:
-                _SHOTS_DIR.mkdir(parents=True, exist_ok=True)
-                _cleanup_old_shots(_SHOTS_DIR)
                 from datetime import datetime
                 out = _SHOTS_DIR / (datetime.now().strftime("%Y%m%d-%H%M%S-%f")
                                     + ".png")
             else:
-                out = Path(path).expanduser()
-                if out.suffix.lower() != ".png":
+                if not str(path).lower().endswith(".png"):
                     return {"ok": False,
                             "error": f"path must end in .png (screencapture "
                                      f"picks the format by extension): {path}"}
-                out.parent.mkdir(parents=True, exist_ok=True)
-                _cleanup_old_shots(_SHOTS_DIR)
+                p = Path(path).expanduser()
+                out = (p if p.is_absolute() else _SHOTS_DIR / p).resolve()
+                shots = _SHOTS_DIR.resolve()
+                try:
+                    out.relative_to(shots)
+                except ValueError:
+                    return {"ok": False,
+                            "error": f"path must stay inside {shots} -- the "
+                                     f"tool never writes elsewhere (got "
+                                     f"{path!r} -> {out})"}
+            if out.exists():
+                return {"ok": False,
+                        "error": f"file already exists, refusing to overwrite: "
+                                 f"{out}"}
             errors = []
             for capture in (_capture_screencapture, _capture_pyautogui):
                 try:
@@ -125,6 +142,8 @@ def register(mcp: FastMCP) -> None:
                     errors.append(f"{capture.__name__}: "
                                   f"{type(exc).__name__}: {exc}")
             else:
+                with contextlib.suppress(OSError):
+                    out.unlink(missing_ok=True)  # no empty leftover
                 return {"ok": False, "error": "; ".join(errors),
                         "hint": "macOS: System Settings > Privacy & Security > "
                                 "Screen Recording -- enable the app running "
