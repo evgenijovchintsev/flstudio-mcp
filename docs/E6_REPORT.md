@@ -71,6 +71,33 @@ SKILL and the `hint`/`setup` fields.
   the new module code).
 - `ruff check .` — 689 (baseline; the one new I001 auto-fixed).
 
+## QA E-6 findings (PASS with remarks)
+
+QA verdict PASS: S1 write/replace visual PASS, S2 5/5 API PASS, S3 empty
+restore visual PASS, S4 trigger=False honest, S5 stale receipt ignored
+(planted `apply_receipt.json` with `applied:true` — response stayed
+`"unknown"`, no `receipt` field).
+
+- **B1 (critical, fixed)** — focus-check false negative: System Events
+  returns the process name `OsxFL` on this machine (CFBundleName is
+  still "FL Studio"), so `"FL Studio" in front` refused every hotkey in
+  the standalone path. Fix accepts both names; sim: `OsxFL` →
+  `focus_ok:true, sent_hotkey:true`, `Safari` → refused. In the daemon
+  path System Events itself throws, so the honest check_failed omission
+  applies (hotkey sent, `focus_ok` absent) — QA's observed behavior.
+- **B2 (minor, by design)** — one manual "MCP Apply" arm per FL session;
+  `ui.runScript` is absent, documented in docstrings/setup/SKILL.
+- **B3 (minor, documented)** — `ensure_piano_roll` only does
+  `ui.showWindow`; it does NOT retarget an already-open Piano roll to
+  another channel (stays on 808 Kick after selecting Snare). Not an E-6
+  blocker; note-bridge writes go to whatever channel the open Piano roll
+  shows.
+- **B4 (info)** — `applied` is always `"unknown"` until E-7; contract.
+
+State QA left: Piano roll empty (S3), MCP_Apply.pyscript `NOTES=[]`,
+stale receipt deleted, TMP_E6 pattern (index 2) left for manual removal
+(no pattern-delete API — E-0 Q4).
+
 ## Follow-up
 
 - E-7 (`fl_piano_get_notes`): the controller-side `flpianoroll` import

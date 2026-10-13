@@ -49,7 +49,10 @@ def _trigger_macos(settle=0.35):
              "first application process whose frontmost is true"],
             text=True, timeout=2,
         ).strip()
-        focused = "FL Studio" in front
+        # E-6 QA B1: the System Events process name is NOT always
+        # "FL Studio" -- on this machine it is "OsxFL" (CFBundleName is
+        # still "FL Studio"). Accept both.
+        focused = any(name in front for name in ("FL Studio", "OsxFL"))
         check_failed = False
     except Exception:
         # Can't verify: send anyway (activate just succeeded) but do NOT
