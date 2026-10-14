@@ -14,6 +14,8 @@ import os
 import re
 from pathlib import Path
 
+from ..paths import documents_dir, image_line_dir
+
 _ENV_FL = "FLSTUDIO_MCP_PRESETS"
 _ENV_SERUM = "FLSTUDIO_MCP_SERUM_PRESETS"
 
@@ -37,8 +39,7 @@ _SYN = {
 
 
 def _fl_studio_dirs():
-    home = Path.home()
-    for r in (home / "Documents" / "Image-Line", home / "Image-Line"):
+    for r in (image_line_dir(), Path.home() / "Image-Line"):
         if r.is_dir():
             yield from sorted(r.glob("FL Studio*"), reverse=True)
 
@@ -58,14 +59,13 @@ def find_serum_presets():
     env = os.environ.get(_ENV_SERUM)
     if env and os.path.isdir(env):
         return env
-    home = Path.home()
     # Base folders that hold a Serum presets subfolder, across platforms:
-    #   Windows/cross-platform default: <Documents>/Xfer
+    #   Windows/cross-platform default: <Documents>/Xfer (registry-aware)
     #   macOS user content:             ~/Music/Xfer, ~/Library/Audio/Presets/Xfer Records
     bases = (
-        home / "Documents" / "Xfer",
-        home / "Music" / "Xfer",
-        home / "Library" / "Audio" / "Presets" / "Xfer Records",
+        documents_dir() / "Xfer",
+        Path.home() / "Music" / "Xfer",
+        Path.home() / "Library" / "Audio" / "Presets" / "Xfer Records",
     )
     names = ("Serum 2 Presets", "Serum2 Presets", "Serum Presets", "Presets")
     for base in bases:
