@@ -27,7 +27,8 @@ class PianoRollNote(BaseModel):
     velocity: float = Field(100 / 127.0, ge=0.0, le=1.0,
                             description="0.0-1.0 (0.787 ~= MIDI velocity 100).")
     porta: bool = Field(False,
-                        description="Portamento: slide into this note from the previous one (808 glides).")
+                        description="Portamento: slide into this note from the "
+                                    "previous one (808 glides).")
 
 
 def register(mcp: FastMCP) -> None:
