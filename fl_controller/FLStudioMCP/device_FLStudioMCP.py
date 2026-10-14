@@ -295,7 +295,7 @@ def _h_ping(params):
     return {
         "fl_version": _fl_version,
         "protocol_version": PROTOCOL_VERSION,
-        "build": "e6-flpianoroll-probe",   # reload marker -- bump to verify reloads take
+        "build": "pr17-retarget",   # reload marker -- bump to verify reloads take
         "ts": time.time(),
     }
 
