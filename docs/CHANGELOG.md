@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.1.0 -- E-0..E-8 tool surface + upstream PR port (14 Oct 2026)
+
+The first big surface release since the SysEx rewrite: nine epics (E-0..E-8)
+landed on `dev`, then the useful parts of nine upstream PRs from
+`rosasynthesiz/flstudio-mcp` were ported and live-verified.
+
+### Epics E-0..E-8
+
+- **Note bridge** (`fl_write_piano_roll_notes` / `_raga_melody` /
+  `_raga_chords`): bakes notes into `MCP_Apply.pyscript` and fires
+  "Run last script again". Application stays honest `applied: "unknown"`
+  (E-6) because FL exposes no score-read channel.
+- **E-1/E-2**: pattern list / select / rename / get_length.
+- **E-3**: `fl_screenshot` (agent debugging) into `~/.flstudio-mcp/shots/`.
+- **E-4**: Channel Rack step-grid read / draw / clear, incl.
+  `fl_channel_set_grid_bits`.
+- **E-5**: plugin preset info / next / prev + `fl_api_probe` (module
+  name listing).
+- **E-7 / E-7b**: **BLOCKED, documented** -- all 11 egress channels out of
+  the Piano-roll `.pyscript` sandbox are dead on FL 26.1.7 (file I/O,
+  `flpianoroll` from controller, score-read APIs, global `Utils`,
+  shell/`socket`/`subprocess`). Re-confirmed on build 5419. See
+  `docs/E7_REPORT.md` for the full matrix and what would unblock it.
+
+### Ported upstream PRs (live-verified on macOS / FL 26.1.7 build 5419)
+
+- **#17** retarget Piano roll on channel select.
+- **#18** optional per-note portamento (808 glides).
+- **#16** Ctrl+Alt+Y by virtual-key code (Windows path no longer needs
+  pyautogui).
+- **#10 + #15** cross-platform FL user-data discovery (`paths.py`, Windows
+  registry + SHGetKnownFolderPath, env overrides).
+- **#11** opt-in virtual CoreMIDI / ALSA ports (self-created, no
+  IAC/loopMIDI setup needed).
+- **#12** (decomposed subset) playlist track control + arrangement read,
+  deep VST/AU param control (`fl_plugin_overview` / `_calibrate_param` /
+  `_set_param_value` / `_intent`), per-OS capability introspection, and an
+  honest plugin-load limitation explainer.
+
+Skipped upstream #13 (stale Windows docs). Tool count is now ~96.
+
 ## v0.2.0 -- MIDI SysEx transport
 
 **Breaking change**: the transport between the MCP server and the FL
