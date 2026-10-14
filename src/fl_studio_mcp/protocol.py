@@ -166,6 +166,20 @@ CMD_ARRANGE_NEW_PATTERN = "arrange_new_pattern"        # find empty + jumpTo + n
 CMD_ARRANGE_CLONE_PATTERN = "arrange_clone_pattern"    # clonePattern + rename
 CMD_ARRANGE_ADD_MARKER = "arrange_add_marker"          # addAutoTimeMarker at a bar
 
+# Arrangement read (PR #12 port): timeline selection + named markers.
+# Read-only: FL's playlist timeline cannot be authored via scripting.
+CMD_ARRANGE_GET_SELECTION = "arrange_get_selection"    # selectionStart/End/IsActive + currentTime
+CMD_ARRANGE_GET_MARKERS = "arrange_get_markers"        # scan getMarkerName (capped)
+
+# Playlist track control (PR #12 port): 1-based track mute/solo/name/color.
+# Track STATE only -- no clip authoring (FL API has no addClip/placeClip).
+CMD_PLAYLIST_TRACK_LIST = "playlist_track_list"        # paginated: name/mute/solo
+CMD_PLAYLIST_GET_TRACK = "playlist_get_track"          # one track's state (safe_write snapshot)
+CMD_PLAYLIST_MUTE_TRACK = "playlist_mute_track"        # muteTrack (state-aware)
+CMD_PLAYLIST_SOLO_TRACK = "playlist_solo_track"        # soloTrack (state-aware)
+CMD_PLAYLIST_SET_NAME = "playlist_set_track_name"      # setTrackName
+CMD_PLAYLIST_SET_COLOR = "playlist_set_track_color"    # setTrackColor
+
 # Note-bridge hardening -- ensure the Piano roll is open before a note-write
 CMD_ENSURE_PIANO_ROLL = "ensure_piano_roll"            # ui.showWindow(widPianoRoll)
 

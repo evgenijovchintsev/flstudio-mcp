@@ -28,16 +28,19 @@ from .protocol import port_from_fl_name, port_to_fl_name
 from .tools import arrange as arrange_tools
 from .tools import audio as audio_tools
 from .tools import bulk as bulk_tools
+from .tools import capabilities as capabilities_tools
 from .tools import chains as chains_tools
 from .tools import color as color_tools
 from .tools import compose as compose_tools
 from .tools import export as export_tools
 from .tools import grid as grid_tools
+from .tools import loader as loader_tools
 from .tools import mix_doctor as mix_doctor_tools
 from .tools import mixing as mixing_tools
 from .tools import pattern as pattern_tools
 from .tools import phase1 as phase1_tools
 from .tools import pianoroll as pianoroll_tools
+from .tools import playlist as playlist_tools
 from .tools import plugin as plugin_tools
 from .tools import preset as preset_tools
 from .tools import presets as presets_tools
@@ -47,6 +50,7 @@ from .tools import routing as routing_tools
 from .tools import transport as transport_tools
 from .tools import undo as undo_tools
 from .tools import visual as visual_tools
+from .tools import vst as vst_tools
 
 logger = logging.getLogger("fl_studio_mcp")
 
@@ -111,6 +115,10 @@ def build_server() -> FastMCP:
     probe_tools.register(mcp)       # E-5: fl_api_probe (module name listing)
     undo_tools.register(mcp)        # E-5: fl_undo (outside the safety layer)
     visual_tools.register(mcp)      # E-3: fl_screenshot (agent debugging)
+    capabilities_tools.register(mcp)  # PR#12: capability introspection (per-OS)
+    vst_tools.register(mcp)         # PR#12: deep VST/AU (overview/calibrate/unit-set)
+    playlist_tools.register(mcp)    # PR#12: playlist tracks + arrangement read
+    loader_tools.register(mcp)      # PR#12: plugin-load limitation explainer
     return mcp
 
 
