@@ -10,10 +10,13 @@ the request id. A background callback dispatches incoming SysEx messages.
 
 from __future__ import annotations
 
+import atexit
+import contextlib
 import json
 import logging
 import os
 import socket
+import sys
 import threading
 import time
 from typing import Any
@@ -95,6 +98,21 @@ def _find_port(pattern: str, names: list[str]) -> str | None:
     return None
 
 
+def _virtual_ports_enabled() -> bool:
+    """Whether to self-create virtual MIDI ports when the named ports are absent.
+
+    ``FLSTUDIO_MCP_VIRTUAL_PORTS`` = ``1``/``true``/``on`` forces on, ``0``/
+    ``false``/``off`` forces off. Default (``auto``): on for macOS/Linux, whose
+    CoreMIDI/ALSA backends support virtual ports; off on Windows (MME can't).
+    """
+    val = os.environ.get("FLSTUDIO_MCP_VIRTUAL_PORTS", "auto").strip().lower()
+    if val in ("1", "true", "on", "yes"):
+        return True
+    if val in ("0", "false", "off", "no"):
+        return False
+    return sys.platform != "win32"
+
+
 def list_ports() -> dict:
     """Return the OS-visible MIDI ports. Useful for `--list-ports`."""
     _ensure_mido()
@@ -131,6 +149,7 @@ class FLBridge:
         self._out_port = None
         self._in_port = None
         self._opened = False
+        self._virtual = False
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -141,6 +160,15 @@ class FLBridge:
         in_names = mido.get_input_names()
         out_match = _find_port(self._port_to_fl_pattern, out_names)
         in_match = _find_port(self._port_from_fl_pattern, in_names)
+
+        # macOS/Linux can create CoreMIDI/ALSA *virtual* ports on demand, so the
+        # user doesn't have to pre-create IAC buses. If the named ports don't
+        # already exist and virtual mode applies, create them here. (Windows'
+        # MME backend can't create virtual ports -- loopMIDI is still required.)
+        if (out_match is None or in_match is None) and _virtual_ports_enabled():
+            self._open_virtual()
+            return
+
         if out_match is None:
             raise FLPortMissing(
                 "No OUTPUT MIDI port matching %r. Available: %s. "
@@ -159,6 +187,31 @@ class FLBridge:
         self._out_port = mido.open_output(out_match)
         self._in_port = mido.open_input(in_match, callback=self._on_midi)
         self._opened = True
+        self._virtual = False
+        atexit.register(self.close)
+
+    def _open_virtual(self) -> None:
+        """Create the two bridge ports as virtual CoreMIDI/ALSA ports.
+
+        Our virtual OUTPUT (``port_to_fl``) appears to FL as an INPUT it can
+        enable; our virtual INPUT (``port_from_fl``) appears to FL as an OUTPUT.
+        This matches the protocol and removes the manual IAC-setup step on macOS.
+        """
+        to_fl = self._port_to_fl_pattern
+        from_fl = self._port_from_fl_pattern
+        logger.info("Creating VIRTUAL MIDI ports: out=%r, in=%r", to_fl, from_fl)
+        try:
+            self._out_port = mido.open_output(to_fl, virtual=True)
+            self._in_port = mido.open_input(from_fl, virtual=True, callback=self._on_midi)
+        except Exception as e:
+            raise FLPortMissing(
+                "Could not create virtual MIDI ports (%s). On macOS this should "
+                "work out of the box; on Windows use loopMIDI and set the port "
+                "names. Ports wanted: %r / %r." % (e, to_fl, from_fl)
+            ) from e
+        self._opened = True
+        self._virtual = True
+        atexit.register(self.close)
 
     def close(self) -> None:
         import contextlib
@@ -171,6 +224,13 @@ class FLBridge:
         self._in_port = None
         self._out_port = None
         self._opened = False
+        self._virtual = False
+        with contextlib.suppress(Exception):  # pragma: no cover
+            atexit.unregister(self.close)
+
+    def __del__(self):  # pragma: no cover - best-effort cleanup on GC
+        with contextlib.suppress(Exception):
+            self.close()
 
     # -- health --------------------------------------------------------------
 
@@ -223,6 +283,7 @@ class FLBridge:
         request_id = protocol.new_request_id()
         request = protocol.make_request(command, params)
         encoded = protocol.encode_message(DIR_REQUEST, request_id, request)
+        eff_timeout = timeout or self.default_timeout
 
         slot = _Slot()
         with self._lock:
@@ -231,10 +292,10 @@ class FLBridge:
         try:
             msg = mido.Message("sysex", data=encoded)
             self._out_port.send(msg)
-            if not slot.event.wait(timeout or self.default_timeout):
+            if not slot.event.wait(eff_timeout):
                 raise FLTimeout(
                     "FL Studio did not respond to %r within %.1fs."
-                    % (command, timeout or self.default_timeout)
+                    % (command, eff_timeout)
                 )
             resp = slot.payload or {}
             if resp.get("ok"):
