@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -143,6 +144,10 @@ def main() -> int:
                                           rb.get("scope")))
         check(f"rollback popped {label}", bool(rb.get("rolled_back")))
 
+    # The three restores above are issued back-to-back and FL commits plugin
+    # writes on a later script tick (the same fact E-1's verify loop exists
+    # for). Give it a beat before judging the final state.
+    time.sleep(1.0)
     final = vals()
     drift = {k: (base[k], final[k]) for k in base
              if abs(final.get(k, 9e9) - base[k]) > 0.005}
